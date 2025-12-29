@@ -8,7 +8,7 @@ let cachedCSV = null;
 let lastFetch = 0;
 const CACHE_TIME = 300000; // 5 minuter
 
-// Enkel in-memory historik (reset vid cold start, ok för korta sessioner)
+// Enkel in-memory historik
 const historyStore = new Map();
 
 async function fetchCSV() {
@@ -35,17 +35,17 @@ export default async function handler(req, res) {
   try {
     const csvText = await fetchCSV();
 
-    const chunks = csvText.split(/\n\s*\n/).filter(c => c.trim().length > 30);
+    // Bättre chunkning: Dela på rubriker som "Anslut XXX" eller "Steg för steg"
+    const chunks = csvText.split(/([A-Z][a-z]+ [A-Z][a-z]+För att|Steg för steg)/g).filter(c => c.trim().length > 30);
 
     const lowerQuestion = question.toLowerCase();
     const relevant = chunks
       .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
-      .slice(0, 8)
+      .slice(0, 5) // Minska till 5 för mer fokuserad kontext
       .join('\n\n');
 
-    const context = relevant || csvText.substring(0, 15000);
+    const context = relevant || csvText.substring(0, 10000); // Mindre fallback-kontext
 
-    // Hämta eller skapa historik
     let history = historyStore.get(sessionId) || [];
 
     history.push({ role: 'user', content: question });
@@ -56,8 +56,9 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig, professionell och hjälpsam.
 Regler:
 - Använd hela konversationens historik för kontext.
-- Om frågan är otydlig eller saknar viktig information, ställ en klargörande fråga istället för att gissa.
+- Om frågan är otydlig eller saknar info: Ställ en klargörande fråga istället för att gissa.
 - Svara kort, strukturerat och steg-för-steg.
+- Ignorera irrelevant info i kontexten – fokusera på frågan.
 - Om inget matchar i guiden: "Jag hittar inte detta i guiden. Kontakta support@fortuspay.com eller ring 010-222 15 20."
 
 Kunskap från FortusPay-guide:
@@ -76,12 +77,7 @@ ${context}`
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
 
     history.push({ role: 'assistant', content: answer });
-
-    // Behåll max 10 meddelanden per session
-    if (history.length > 10) {
-      history = history.slice(-10);
-    }
-
+    history = history.slice(-10);
     historyStore.set(sessionId, history);
 
     res.status(200).json({ answer });
