@@ -1,86 +1,46 @@
-<!DOCTYPE html>
-<html lang="sv">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FortusPay Support-Chatt</title>
-  <style>
-    body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f8f9fa; }
-    .chat-container {
-      max-width: 500px; margin: 20px auto; background: white; border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; height: 80vh; display: flex; flex-direction: column;
-    }
-    header {
-      background: #1a3b5f; color: white; padding: 15px; text-align: center; position: relative;
-    }
-    header img.logo { height: 30px; vertical-align: middle; margin-right: 10px; }
-    header h1 { margin: 0; font-size: 1.2em; display: inline-block; vertical-align: middle; }
-    #close-btn {
-      position: absolute; right: 15px; top: 15px; background: none; border: none;
-      color: white; font-size: 24px; cursor: pointer;
-    }
-    #messages {
-      flex: 1; padding: 15px; overflow-y: auto; background: #f0f2f5;
-    }
-    .message { margin: 10px 0; padding: 10px 15px; border-radius: 18px; max-width: 80%; }
-    .user { background: #1a3b5f; color: white; align-self: flex-end; margin-left: auto; }
-    .ai { background: white; border: 1px solid #ddd; align-self: flex-start; }
-    #input-area {
-      display: flex; padding: 10px; background: white; border-top: 1px solid #eee;
-    }
-    #user-input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 25px; outline: none; }
-    button { padding: 12px 20px; background: #1a3b5f; color: white; border: none; border-radius: 25px; margin-left: 10px; cursor: pointer; }
-    .welcome { text-align: center; color: #555; margin: 20px 0; }
-  </style>
-</head>
-<body>
-  <div class="chat-container">
-    <header>
-      <button id="close-btn" onclick="window.close() || window.parent.postMessage('closeChat','*')">×</button>
-      <img class="logo" src="https://fortuspay.com/logo.png" alt="FortusPay Logo" onerror="this.style.display='none'">
-      <h1>FortusPay Support</h1>
-    </header>
-    <div id="messages">
-      <div class="welcome">
-        <p>Hej! 👋 Jag är FortusPay's support-AI.<br>Fråga gärna om Swish-anslutning, dagsavslut, kvitton eller annat.</p>
-      </div>
-    </div>
-    <div id="input-area">
-      <input type="text" id="user-input" placeholder="Skriv din fråga här..." autocomplete="off">
-      <button onclick="sendMessage()">Skicka</button>
-    </div>
-  </div>
+<script>
+  const messages = document.getElementById('messages');
+  const input = document.getElementById('user-input');
 
-  <script>
-    const messages = document.getElementById('messages');
-    const input = document.getElementById('user-input');
+  function addMessage(text, type) {
+    const div = document.createElement('div');
+    div.className = `message ${type}`;
+    div.textContent = text;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+  }
 
-    function addMessage(text, type) {
-      const div = document.createElement('div');
-      div.className = `message ${type}`;
-      div.textContent = text;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
-    }
+  async function sendMessage() {
+    const question = input.value.trim();
+    if (!question) return;
+    addMessage(question, 'user');
+    input.value = '';
 
-    async function sendMessage() {
-      const question = input.value.trim();
-      if (!question) return;
-      addMessage(question, 'user');
-      input.value = '';
+    // Lägg till loading-meddelande
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message ai';
+    loadingDiv.textContent = 'Tänker...';
+    messages.appendChild(loadingDiv);
+    messages.scrollTop = messages.scrollHeight;
 
-      addMessage('Skriver...', 'ai');
-      const response = await fetch('/api/chat', {
+    try {
+      const response = await fetch('https://fortus-support-ai.vercel.app/api/chat', {  // ABSOLUT URL här!
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: question })
       });
 
       const data = await response.json();
-      messages.lastChild.textContent = data.response || 'Just nu tar det lite längre tid – prova igen om en stund!';
-    }
 
-    input.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
-  </script>
-</body>
-</html>
+      // Ta bort loading och lägg till riktigt svar
+      messages.removeChild(loadingDiv);
+      addMessage(data.response || 'Just nu tar det lite längre tid – prova igen om en stund!', 'ai');
+    } catch (error) {
+      messages.removeChild(loadingDiv);
+      addMessage('Oj, något gick fel med anslutningen. Prova igen eller ladda om sidan.', 'ai');
+      console.error(error);
+    }
+  }
+
+  input.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+</script>
