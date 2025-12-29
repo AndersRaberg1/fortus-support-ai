@@ -1,3 +1,7 @@
+const sessionId = crypto.randomUUID(); // Unik per session
+
+// I sendMessage(), ändra fetch body:
+body: JSON.stringify({ question, sessionId })
 <!DOCTYPE html>
 <html lang="sv">
 <head>
