@@ -42,8 +42,7 @@
   </div>
 
   <script>
-    const API_URL = 'https://fortus-support-ai.vercel.app/api/chat';
-    const sessionId = crypto.randomUUID ? crypto.randomUUID() : 'session-' + Date.now();
+    const API_URL = '/api/chat'; // Relativ URL – fungerar på både preview och main
 
     const messagesDiv = document.getElementById('fortus-chat-messages');
     const input = document.getElementById('fortus-chat-input');
@@ -52,8 +51,9 @@
 
     // Röstigenkänning
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
     if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
+      recognition = new SpeechRecognition();
       recognition.lang = 'sv-SE';
       recognition.continuous = false;
       recognition.interimResults = false;
@@ -77,7 +77,7 @@
 
       recognition.onend = () => voiceBtn.style.background = '#1a3b5f';
     } else {
-      voiceBtn.style.display = 'none'; // Dölj om inte stöd finns
+      voiceBtn.style.display = 'none';
     }
 
     async function sendMessage() {
@@ -92,20 +92,24 @@
         const response = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, sessionId })
+          body: JSON.stringify({ question })
         });
 
-        if (!response.ok) throw new Error('Serverfel');
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Serverfel: ${response.status} – ${errorText}`);
+        }
 
         const data = await response.json();
         const answer = data.answer || 'Inget svar';
 
         removeTyping();
         const msgDiv = addMessage(answer, 'fortus-ai');
-        msgDiv.innerHTML += ` <span class="speak-btn" title="Lyssna" onclick="speak(this.previousSibling.textContent)">🔊</span>`;
+        msgDiv.innerHTML += ` <span class="speak-btn" title="Lyssna" onclick="speak(this.closest('.fortus-message').innerText.slice(0, -2))">🔊</span>`;
       } catch (err) {
+        console.error(err);
         removeTyping();
-        addMessage('Oj, något gick fel. Prova igen!', 'fortus-ai');
+        addMessage('Oj, något gick fel med anslutningen. Prova igen!', 'fortus-ai');
       }
     }
 
