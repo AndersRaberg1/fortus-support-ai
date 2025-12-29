@@ -6,7 +6,9 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz
 
 let cachedCSV = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter
+const CACHE_TIME = 300000;
+
+const historyStore = new Map();
 
 async function fetchCSV() {
   if (Date.now() - lastFetch > CACHE_TIME || !cachedCSV) {
@@ -21,44 +23,51 @@ async function fetchCSV() {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { question } = req.body;
+  const { question, sessionId = 'default-session' } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'Ingen fråga' });
 
   try {
     const csvText = await fetchCSV();
-
     const chunks = csvText.split(/\n\s*\n/).filter(c => c.trim().length > 30);
-
     const lowerQuestion = question.toLowerCase();
     const relevant = chunks
       .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
-      .slice(0, 8)
+      .slice(0, 6)
       .join('\n\n');
+    const context = relevant || csvText.substring(0, 12000);
 
-    const context = relevant || csvText.substring(0, 15000);
+    let history = historyStore.get(sessionId) || [];
+    history.push({ role: 'user', content: question });
+
+    const messages = [
+      {
+        role: 'system',
+        content: `Du är FortusPay Support-AI – vänlig och professionell.
+VIKTIGA REGLER:
+- Detektera automatiskt språk i frågan och svara alltid på samma språk som användaren (t.ex. engelska, norska, danska, tyska osv.).
+- Använd hela konversationens historik för kontext.
+- Om frågan är otydlig: Ställ en klargörande fråga.
+- Svara strukturerat och steg-för-steg.
+- Om inget matchar i guiden: "Jag hittar inte detta i guiden. Kontakta support@fortuspay.com eller ring 010-222 15 20."
+
+Kunskap från FortusPay-guide (på svenska, översätt vid behov):
+${context}`
+      },
+      ...history
+    ];
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.1,
-      messages: [
-        {
-          role: 'system',
-          content: `Du är FortusPay Support-AI – vänlig och professionell.
-
-REGLER:
-- Svara ENDAST baserat på kunskapen nedan.
-- Om frågan inte täcks: "Jag hittar inte detta i guiden. Kontakta support@fortuspay.com eller ring 010-222 15 20."
-- Strukturerat, steg-för-steg, på svenska.
-
-Kunskap:
-${context}`
-        },
-        { role: 'user', content: question }
-      ]
+      temperature: 0.3,
+      messages
     });
 
     let answer = completion.choices[0].message.content.trim();
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
+
+    history.push({ role: 'assistant', content: answer });
+    history = history.slice(-10);
+    historyStore.set(sessionId, history);
 
     res.status(200).json({ answer });
   } catch (error) {
