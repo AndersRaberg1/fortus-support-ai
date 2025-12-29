@@ -6,8 +6,9 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz
 
 let cachedCSV = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000;
+const CACHE_TIME = 300000; // 5 minuter
 
+// In-memory historik
 const historyStore = new Map();
 
 async function fetchCSV() {
@@ -28,13 +29,17 @@ export default async function handler(req, res) {
 
   try {
     const csvText = await fetchCSV();
-    const chunks = csvText.split(/\n\s*\n/).filter(c => c.trim().length > 30);
+
+    // Bättre chunkning: Dela på rubriker som "Anslut XXX" eller "Steg för steg"
+    const chunks = csvText.split(/([A-Z][a-z]+ [A-Z][a-z]+För att|Steg för steg)/g).filter(c => c.trim().length > 30);
+
     const lowerQuestion = question.toLowerCase();
     const relevant = chunks
       .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
-      .slice(0, 6)
+      .slice(0, 5) // Minska för mer fokus
       .join('\n\n');
-    const context = relevant || csvText.substring(0, 12000);
+
+    const context = relevant || csvText.substring(0, 10000);
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -43,14 +48,17 @@ export default async function handler(req, res) {
       {
         role: 'system',
         content: `Du är FortusPay Support-AI – vänlig och professionell.
-VIKTIGA REGLER:
-- Detektera automatiskt språk i frågan och svara alltid på samma språk som användaren (t.ex. engelska, norska, danska, tyska osv.).
-- Använd hela konversationens historik för kontext.
-- Om frågan är otydlig: Ställ en klargörande fråga.
-- Svara strukturerat och steg-för-steg.
-- Om inget matchar i guiden: "Jag hittar inte detta i guiden. Kontakta support@fortuspay.com eller ring 010-222 15 20."
 
-Kunskap från FortusPay-guide (på svenska, översätt vid behov):
+STRIKTA REGLER:
+- SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA (t.ex. engelska om frågan är på engelska, norska om norska, danska om danska osv.). Detta är högsta prioritet.
+- Kunskapsbasen är på svenska – översätt svaret naturligt och korrekt till användarens språk.
+- Använd hela konversationens historik för kontext.
+- Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
+- Svara strukturerat och steg-för-steg.
+- Ignorera irrelevant info i kontexten – fokusera på frågan.
+- Om inget matchar: Översätt fallback-meddelandet till användarens språk, t.ex. "I can't find this in the guide. Contact support@fortuspay.com or call 010-222 15 20."
+
+Kunskap från FortusPay-guide (översätt vid behov):
 ${context}`
       },
       ...history
@@ -71,7 +79,8 @@ ${context}`
 
     res.status(200).json({ answer });
   } catch (error) {
-    res.status(500).json({ error: 'Tekniskt fel' });
+    console.error(error);
+    res.status(500).json({ error: 'Tekniskt fel – försök igen om en stund' });
   }
 }
 
