@@ -58,18 +58,19 @@ export default async function handler(req, res) {
 
     const lowerQuestion = question.toLowerCase();
 
-    // Bättre sökning med synonymer
+    // Bredare sökning med synonymer för stabila träffar
     const relevantChunks = chunks
       .filter(chunk => {
         const lowerChunk = chunk.toLowerCase();
         if (lowerQuestion.split(' ').some(word => lowerChunk.includes(word))) return true;
-        const keywords = ['swish', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'montering', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura'];
-        return keywords.some(kw => lowerChunk.includes(kw));
+        const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
+        return keywords.some(kw => lowerChunk.includes(kw.toLowerCase()));
       })
       .slice(0, 5)
       .join('\n\n');
 
-    const context = relevantChunks || guideText.substring(0, 10000);
+    // Alltid fallback till hela guiden om inget specifikt matchar
+    const context = relevantChunks || guideText.substring(0, 15000);
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -80,16 +81,16 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- Använd guiden för korrekt info – inkludera länkar om de finns.
+- Använd guiden för korrekt info – inkludera länkar och ID om de finns.
 - Svara steg-för-steg.
-- Om inget matchar: Säg "Jag hittar inte exakt detta i guiden – kontakta support@fortuspay.com eller ring 010-222 15 20."
+- Om inget exakt matchar: Använd relevant info från guiden ändå eller säg "Kontakta support för detta."
 Kunskap från guide:
 ${context}`
       },
       ...history
     ];
 
-    // Timeout + max_tokens för snabbare svar
+    // Timeout + begränsningar för stabilitet
     const completionPromise = groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
