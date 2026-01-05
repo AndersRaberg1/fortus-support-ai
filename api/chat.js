@@ -6,9 +6,8 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz
 
 let cachedCSV = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter
+const CACHE_TIME = 300000;
 
-// In-memory historik för sessioner (funkar bra för kortare konversationer)
 const historyStore = new Map();
 
 async function fetchCSV() {
@@ -22,52 +21,50 @@ async function fetchCSV() {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).end();
 
   const { question, sessionId = 'default-session' } = req.body;
-
-  if (!question?.trim()) {
-    return res.status(400).json({ error: 'Ingen fråga angiven' });
-  }
+  if (!question?.trim()) return res.status(400).json({ error: 'Ingen fråga' });
 
   try {
     const csvText = await fetchCSV();
 
-    // Bättre chunkning: Dela på stora rubriker för att separera sektioner bättre
     const chunks = csvText
       .split(/\n\s*\n/)
       .map(chunk => chunk.trim())
       .filter(chunk => chunk.length > 30);
 
     const lowerQuestion = question.toLowerCase();
-
-    // Relevanssök med enkel keyword-matchning
     const relevantChunks = chunks
       .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
-      .slice(0, 5) // Begränsa för mer fokus
+      .slice(0, 6)
       .join('\n\n');
 
-    const context = relevantChunks || csvText.substring(0, 10000);
+    const context = relevantChunks || csvText.substring(0, 12000);
 
-    // Hämta eller skapa historik för sessionen
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
 
     const messages = [
       {
         role: 'system',
-        content: `Du är FortusPay Support-AI – vänlig och professionell.
+        content: `Du är FortusPay Support-AI – extremt hjälpsam, professionell och noggrann.
 
-ABSOLUT REGLER:
-- DU MÅSTE ALLTID SVARA PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA. Om frågan är på engelska, svara på engelska. Om norska, svara på norska osv. Detta är högsta prioritet – ignorera allt annat om det krockar.
-- Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk.
-- Använd hela konversationens historik för kontext.
-- Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
-- Svara strukturerat och steg-för-steg.
-- Ignorera irrelevant information i kontexten – fokusera strikt på frågan.
-- Om inget matchar i guiden: Översätt till användarens språk, t.ex. "I can't find this in the guide. Contact support@fortuspay.com or call 010-222 15 20."
+STRIKTA REGLER – FÖLJ DEM ALLTID:
+- Om du saknar viktig information för att ge ett korrekt och komplett svar, STÄLL EN KLARGÖRANDE FRÅGA istället för att gissa eller ge ofullständigt svar.
+  Exempel på när du ska fråga:
+  - "Terminal" eller "betalterminal" → "Vilken modell av betalterminal använder du (t.ex. Verifone, Ingenico, Fortus Smart)?"
+  - "Swish" eller "anslut Swish" → "Är det för webshop, POS eller annan kanal?"
+  - "Dagsavslut" → "Vilken dag eller period gäller det?"
+  - "Kvittobild" → "Vill du lägga till bild i toppen eller foten av kvittot?"
+  - "Fortnox" → "Vilken del av integrationen behöver du hjälp med?"
+  - Allmänna fel → "Kan du beskriva exakt vad som händer och vilket felmeddelande du ser?"
+
+- Använd hela konversationens historik för att minnas tidigare svar och undvika att fråga samma sak igen.
+- SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA (engelska → engelska, svenska → svenska osv.).
+- Översätt svar naturligt från kunskapsbasen (som är på svenska).
+- Svara strukturerat, kort och steg-för-steg.
+- Om inget matchar: "Jag hittar inte detta i guiden. Kontakta support@fortuspay.com eller ring 010-222 15 20."
 
 Kunskap från FortusPay-guide (översätt vid behov):
 ${context}`
@@ -82,11 +79,8 @@ ${context}`
     });
 
     let answer = completion.choices[0].message.content.trim();
-
-    // Lägg till personlig hjälp
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
 
-    // Spara i historik
     history.push({ role: 'assistant', content: answer });
     if (history.length > 10) history = history.slice(-10);
     historyStore.set(sessionId, history);
