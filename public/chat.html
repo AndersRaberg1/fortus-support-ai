@@ -5,92 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FortusPay Support-Chatt</title>
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f7fa;
-      margin: 0;
-      padding: 40px 0;
-      display: flex;
-      justify-content: center;
-    }
-    #fortus-chat-container {
-      width: 380px;
-      max-width: 95%;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      height: 600px;
-    }
-    #fortus-chat-header {
-      background: #1a3b5f;
-      color: white;
-      padding: 16px;
-      text-align: center;
-      font-weight: bold;
-      font-size: 18px;
-    }
-    #fortus-chat-messages {
-      flex: 1;
-      padding: 16px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .fortus-message {
-      max-width: 80%;
-      padding: 12px 16px;
-      border-radius: 18px;
-      line-height: 1.5;
-      word-wrap: break-word;
-    }
-    .fortus-user {
-      align-self: flex-end;
-      background: #1a3b5f;
-      color: white;
-      border-bottom-right-radius: 4px;
-    }
-    .fortus-ai {
-      align-self: flex-start;
-      background: #e9eef4;
-      color: #333;
-      border-bottom-left-radius: 4px;
-    }
-    #fortus-chat-input-area {
-      display: flex;
-      border-top: 1px solid #ddd;
-      padding: 12px;
-      background: white;
-    }
-    #fortus-chat-input {
-      flex: 1;
-      padding: 12px 16px;
-      border: 1px solid #ccc;
-      border-radius: 24px;
-      font-size: 16px;
-      outline: none;
-    }
-    #fortus-chat-input:focus {
-      border-color: #1a3b5f;
-    }
-    #fortus-send-btn {
-      margin-left: 8px;
-      background: #1a3b5f;
-      color: white;
-      border: none;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 20px;
-    }
-    .fortus-typing {
-      font-style: italic;
-      color: #666;
-    }
+    body {font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;background: #f5f7fa;margin: 0;padding: 40px 0;display: flex;justify-content: center;}
+    #fortus-chat-container {width: 380px;max-width: 95%;background: white;border-radius: 16px;box-shadow: 0 10px 30px rgba(0,0,0,0.1);overflow: hidden;display: flex;flex-direction: column;height: 600px;}
+    #fortus-chat-header {background: #1a3b5f;color: white;padding: 16px;text-align: center;font-weight: bold;font-size: 18px;}
+    #fortus-chat-messages {flex: 1;padding: 16px;overflow-y: auto;display: flex;flex-direction: column;gap: 12px;}
+    .fortus-message {max-width: 80%;padding: 12px 16px;border-radius: 18px;line-height: 1.5;word-wrap: break-word;position: relative;}
+    .fortus-user {align-self: flex-end;background: #1a3b5f;color: white;border-bottom-right-radius: 4px;}
+    .fortus-ai {align-self: flex-start;background: #e9eef4;color: #333;border-bottom-left-radius: 4px;}
+    #fortus-chat-input-area {display: flex;border-top: 1px solid #ddd;padding: 12px;background: white;align-items: center;}
+    #fortus-chat-input {flex: 1;padding: 12px 16px;border: 1px solid #ccc;border-radius: 24px;font-size: 16px;outline: none;margin: 0 8px;}
+    #fortus-voice-btn, #fortus-send-btn {background: #1a3b5f;color: white;border: none;width: 44px;height: 44px;border-radius: 50%;cursor: pointer;font-size: 20px;}
+    .audio-controls {position: absolute;bottom: 8px;right: 12px;}
+    .speak-btn, .stop-btn {cursor: pointer;color: #1a3b5f;font-size: 18px;margin-left: 8px;}
+    .quick-buttons {margin: 10px 0;text-align: center;}
+    .quick-buttons button {margin: 5px;padding: 8px 12px;background: #e9eef4;border: none;border-radius: 6px;cursor: pointer;}
   </style>
 </head>
 <body>
@@ -99,24 +27,64 @@
     <div id="fortus-chat-messages">
       <div class="fortus-message fortus-ai">
         Hej! 👋 Jag är FortusPay Support-AI.<br>
-        Ställ en fråga om POS, Swish, Faktura, kvittoinställningar eller något annat så hjälper jag dig steg för steg.
+        Ställ en fråga om POS, Swish, Faktura eller annat – du kan också tala med mikrofonen!
+      </div>
+      <div class="quick-buttons">
+        <button onclick="quickAsk('Hur ansluter jag Swish?')">Swish-anslutning</button>
+        <button onclick="quickAsk('Hur gör jag dagsavslut?')">Dagsavslut</button>
+        <button onclick="quickAsk('Hur lägger jag till bild på kvittot?')">Kvittobild</button>
       </div>
     </div>
     <div id="fortus-chat-input-area">
-      <input type="text" id="fortus-chat-input" placeholder="Skriv din fråga här..." autocomplete="off">
+      <button id="fortus-voice-btn" title="Tala fråga">🎤</button>
+      <input type="text" id="fortus-chat-input" placeholder="Skriv eller tala din fråga...">
       <button id="fortus-send-btn">➤</button>
     </div>
   </div>
 
   <script>
-    const API_URL = 'https://fortus-support-ai.vercel.app/api/chat';
+    const API_URL = '/api/chat';
+
+    let currentUtterance = null; // Håller koll på pågående uppläsning
 
     const messagesDiv = document.getElementById('fortus-chat-messages');
     const input = document.getElementById('fortus-chat-input');
     const sendBtn = document.getElementById('fortus-send-btn');
+    const voiceBtn = document.getElementById('fortus-voice-btn');
+
+    // Röstigenkänning
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.lang = 'sv-SE';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      voiceBtn.addEventListener('click', () => {
+        recognition.start();
+        voiceBtn.style.background = '#0d47a1';
+      });
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        input.value = transcript;
+        voiceBtn.style.background = '#1a3b5f';
+        sendMessage();
+      };
+
+      recognition.onerror = () => {
+        voiceBtn.style.background = '#1a3b5f';
+        addMessage('Röstigenkänning misslyckades – prova igen', 'fortus-ai');
+      };
+
+      recognition.onend = () => voiceBtn.style.background = '#1a3b5f';
+    } else {
+      voiceBtn.style.display = 'none';
+    }
 
     async function sendMessage() {
-      const question = input.value.trim();
+      let question = input.value.trim();
       if (!question) return;
 
       addMessage(question, 'fortus-user');
@@ -133,14 +101,60 @@
         if (!response.ok) throw new Error('Serverfel');
 
         const data = await response.json();
-        const answer = data.answer || 'Inget svar från servern';
+        const answer = data.answer || 'Inget svar';
 
         removeTyping();
-        addMessage(answer, 'fortus-ai');
+        const msgDiv = addMessage(answer, 'fortus-ai');
+
+        // Lägg till 🔊 och ⏹
+        const audioControls = document.createElement('div');
+        audioControls.className = 'audio-controls';
+        audioControls.innerHTML = `
+          <span class="speak-btn" title="Lyssna" onclick="speakAnswer(this, '${answer.replace(/'/g, "\\'")}')">🔊</span>
+          <span class="stop-btn" title="Stoppa" onclick="stopSpeaking()" style="display:none;">⏹</span>
+        `;
+        msgDiv.appendChild(audioControls);
       } catch (err) {
         removeTyping();
         addMessage('Oj, något gick fel med anslutningen. Prova igen!', 'fortus-ai');
       }
+    }
+
+    function speakAnswer(btn, text) {
+      // Stoppa pågående
+      stopSpeaking();
+
+      currentUtterance = new SpeechSynthesisUtterance(text);
+      currentUtterance.lang = navigator.language || 'sv-SE';
+
+      // Visa stopp-knapp
+      const stopBtn = btn.nextElementSibling;
+      if (stopBtn && stopBtn.classList.contains('stop-btn')) {
+        stopBtn.style.display = 'inline';
+      }
+
+      currentUtterance.onend = () => {
+        if (stopBtn) stopBtn.style.display = 'none';
+        currentUtterance = null;
+      };
+
+      speechSynthesis.speak(currentUtterance);
+    }
+
+    function stopSpeaking() {
+      if (currentUtterance) {
+        speechSynthesis.cancel();
+        currentUtterance = null;
+      }
+      // Dölj alla stopp-knappar
+      document.querySelectorAll('.stop-btn').forEach(btn => {
+        btn.style.display = 'none';
+      });
+    }
+
+    function quickAsk(q) {
+      input.value = q;
+      sendMessage();
     }
 
     function addMessage(text, sender, className = '') {
@@ -149,6 +163,7 @@
       div.innerHTML = text.replace(/\n/g, '<br>');
       messagesDiv.appendChild(div);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      return div;
     }
 
     function removeTyping() {
