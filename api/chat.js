@@ -17,7 +17,7 @@ async function fetchGuide() {
     
     const html = await res.text();
 
-    // Robust extrahering med regex (funkar perfekt i serverless-miljö)
+    // Robust extrahering med regex
     const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
     const lines = cellMatches
       .map(match => match.replace(/<[^>]+>/g, '').trim())
