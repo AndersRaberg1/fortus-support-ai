@@ -1,10 +1,13 @@
+
+
+
 import { Groq } from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 let cachedGuide = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter (ändra till 60000 för snabbare uppdatering)
+const CACHE_TIME = 300000; // 5 minuter (ändra till 60000 för snabbare realtid)
 
 const historyStore = new Map();
 
@@ -17,6 +20,7 @@ async function fetchGuide() {
     
     const html = await res.text();
 
+    // Robust extrahering med regex (funkar perfekt i serverless-miljö)
     const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
     const lines = cellMatches
       .map(match => match.replace(/<[^>]+>/g, '').trim())
