@@ -4,7 +4,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 let cachedGuide = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter (ändra till 60000 för snabbare realtid)
+const CACHE_TIME = 300000; // 5 minuter
 
 const historyStore = new Map();
 
@@ -17,7 +17,6 @@ async function fetchGuide() {
     
     const html = await res.text();
 
-    // Robust extrahering med regex (funkar perfekt i serverless-miljö)
     const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
     const lines = cellMatches
       .map(match => match.replace(/<[^>]+>/g, '').trim())
@@ -74,7 +73,7 @@ export default async function handler(req, res) {
         role: 'system',
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
-- DU MÅSTE ALLTID SVARA PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA. Om frågan är på engelska, svara på engelska. Om norska, svara på norska osv. Detta är högsta prioritet – ignorera allt annat om det krockar.
+- DU MÅSTE ALLTID SVARA PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA.
 - Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk.
 - Använd hela konversationens historik för kontext.
 - Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
@@ -87,11 +86,17 @@ ${context}`
       ...history
     ];
 
-    const completion = await groq.chat.completions.create({
+    // Timeout för att undvika häng (10 sek)
+    const completionPromise = groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
-      messages
+      messages,
+      max_tokens: 600 // Snabbare svar
     });
+
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000));
+
+    const completion = await Promise.race([completionPromise, timeoutPromise]);
 
     let answer = completion.choices[0].message.content.trim();
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
@@ -102,7 +107,7 @@ ${context}`
 
     res.status(200).json({ answer });
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('API Error:', error.message || error);
     res.status(500).json({ error: 'Tekniskt fel – försök igen om en stund' });
   }
 }
