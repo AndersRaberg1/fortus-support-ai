@@ -44,17 +44,15 @@
 
   <script>
     const API_URL = '/api/chat';
-
-    let currentUtterance = null; // Håller koll på pågående uppläsning
-
+    let currentUtterance = null;
     const messagesDiv = document.getElementById('fortus-chat-messages');
     const input = document.getElementById('fortus-chat-input');
     const sendBtn = document.getElementById('fortus-send-btn');
     const voiceBtn = document.getElementById('fortus-voice-btn');
 
-    // Röstigenkänning
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
+
     if (SpeechRecognition) {
       recognition = new SpeechRecognition();
       recognition.lang = 'sv-SE';
@@ -78,7 +76,9 @@
         addMessage('Röstigenkänning misslyckades – prova igen', 'fortus-ai');
       };
 
-      recognition.onend = () => voiceBtn.style.background = '#1a3b5f';
+      recognition.onend = () => {
+        voiceBtn.style.background = '#1a3b5f';
+      };
     } else {
       voiceBtn.style.display = 'none';
     }
@@ -106,7 +106,6 @@
         removeTyping();
         const msgDiv = addMessage(answer, 'fortus-ai');
 
-        // Lägg till 🔊 och ⏹
         const audioControls = document.createElement('div');
         audioControls.className = 'audio-controls';
         audioControls.innerHTML = `
@@ -121,13 +120,10 @@
     }
 
     function speakAnswer(btn, text) {
-      // Stoppa pågående
       stopSpeaking();
-
       currentUtterance = new SpeechSynthesisUtterance(text);
       currentUtterance.lang = navigator.language || 'sv-SE';
 
-      // Visa stopp-knapp
       const stopBtn = btn.nextElementSibling;
       if (stopBtn && stopBtn.classList.contains('stop-btn')) {
         stopBtn.style.display = 'inline';
@@ -146,7 +142,6 @@
         speechSynthesis.cancel();
         currentUtterance = null;
       }
-      // Dölj alla stopp-knappar
       document.querySelectorAll('.stop-btn').forEach(btn => {
         btn.style.display = 'none';
       });
