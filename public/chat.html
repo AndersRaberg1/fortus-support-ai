@@ -43,9 +43,9 @@
   </div>
 
   <script>
-    const API_URL = '/api/chat';
+    const API_URL = 'https://fortus-support-ai.vercel.app/api/chat'; // Absolut URL – funkar alltid
 
-    let currentUtterance = null; // Håller koll på pågående uppläsning
+    let currentUtterance = null;
 
     const messagesDiv = document.getElementById('fortus-chat-messages');
     const input = document.getElementById('fortus-chat-input');
@@ -106,7 +106,6 @@
         removeTyping();
         const msgDiv = addMessage(answer, 'fortus-ai');
 
-        // Lägg till 🔊 och ⏹
         const audioControls = document.createElement('div');
         audioControls.className = 'audio-controls';
         audioControls.innerHTML = `
@@ -121,17 +120,13 @@
     }
 
     function speakAnswer(btn, text) {
-      // Stoppa pågående
       stopSpeaking();
 
       currentUtterance = new SpeechSynthesisUtterance(text);
       currentUtterance.lang = navigator.language || 'sv-SE';
 
-      // Visa stopp-knapp
       const stopBtn = btn.nextElementSibling;
-      if (stopBtn && stopBtn.classList.contains('stop-btn')) {
-        stopBtn.style.display = 'inline';
-      }
+      if (stopBtn) stopBtn.style.display = 'inline';
 
       currentUtterance.onend = () => {
         if (stopBtn) stopBtn.style.display = 'none';
@@ -146,10 +141,7 @@
         speechSynthesis.cancel();
         currentUtterance = null;
       }
-      // Dölj alla stopp-knappar
-      document.querySelectorAll('.stop-btn').forEach(btn => {
-        btn.style.display = 'none';
-      });
+      document.querySelectorAll('.stop-btn').forEach(btn => btn.style.display = 'none');
     }
 
     function quickAsk(q) {
