@@ -58,11 +58,10 @@ export default async function handler(req, res) {
 
     const lowerQuestion = question.toLowerCase();
 
-    // Stark sökning för att alltid hitta relevant
+    // Stark sökning
     let relevantChunks = chunks.filter(chunk => lowerQuestion.split(' ').some(word => chunk.toLowerCase().includes(word)));
 
-    // Extra fallback med keywords om för få träffar
-    if (relevantChunks.length < 2) {
+    if (relevantChunks.length < 1) {
       relevantChunks = chunks.filter(chunk => {
         const lowerChunk = chunk.toLowerCase();
         const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
@@ -81,11 +80,11 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- ANVÄND ENDAST INFORMATION FRÅN GUIDEN NEDAN – INKLUDERA LÄNKAR OCH SPECIFIKA ID (t.ex. Swish ID 9873196894).
-- SVARA STEG-FÖR-STEG OCH STRUKTURERAT.
-- HALLUCINERA INTE – LÄGG INTE TILL ELLER UPPFINN DETALJER.
-- Om inget exakt matchar: Säg "Enligt guiden finns ingen exakt info, kontakta support@fortuspay.com eller ring 010-222 15 20."
-Kunskap från FortusPay-guide:
+- ANVÄND ENDAST INFORMATION FRÅN GUIDEN NEDAN – CITERA EXAKT, INKLUDERA LÄNKAR OCH ID (t.ex. Swish ID 9873196894).
+- SVARA STEG-FÖR-STEG.
+- HALLUCINERA INTE – UPPFINN INGA STEG.
+- Om inget exakt matchar: Säg "Enligt guiden: [citera relevant] eller kontakta support@fortuspay.com | 010-222 15 20."
+Kunskap från guide (använd detta strikt):
 ${context}`
       },
       ...history
@@ -93,7 +92,7 @@ ${context}`
 
     const completionPromise = groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.3,
+      temperature: 0.2, // Lägre för mindre hallucination
       messages,
       max_tokens: 600
     });
