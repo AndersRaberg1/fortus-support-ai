@@ -18,11 +18,10 @@ async function fetchAndChunkGuide() {
 
     const html = await res.text();
 
-    // Extrahera celler och ersätt <br> med \n för att behålla formatering
     const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
     const cells = cellMatches
       .map(match => match
-        .replace(/<br\s*\/?>/gi, '\n')  // Behåll radbrytningar
+        .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<[^>]+>/g, '')
         .trim()
       )
@@ -63,51 +62,27 @@ export default async function handler(req, res) {
 
     const lowerQuestion = question.toLowerCase().replace(/[?.!]/g, '');
 
-    // Extrahera nyckelord (filtrera bort stoppord)
-    const stopWords = ['hur', 'jag', 'gör', 'det', 'på', 'i', 'till', 'med', 'och', 'en', 'att', 'för', 'av'];
+    // Extrahera ord längre än 2 tecken
     const questionWords = lowerQuestion
       .split(' ')
-      .filter(word => word.length > 2 && !stopWords.includes(word));
+      .filter(word => word.length > 2);
 
-    // 1. Prioritet: Träff i titel (minst 1 nyckelord)
+    // Hitta och ranka relevanta chunks
     let relevantChunks = chunks
-      .filter(chunk => {
-        const lowerTitle = chunk.title.toLowerCase();
-        return questionWords.some(word => lowerTitle.includes(word));
+      .map(chunk => {
+        const lowerFull = (chunk.title + ' ' + chunk.content).toLowerCase();
+        const matches = questionWords.filter(word => lowerFull.includes(word));
+        return { chunk, score: matches.length };
       })
-      .sort((a, b) => {
-        const scoreA = questionWords.filter(w => a.title.toLowerCase().includes(w)).length;
-        const scoreB = questionWords.filter(w => b.title.toLowerCase().includes(w)).length;
-        return scoreB - scoreA;
-      });
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.chunk)
+      .slice(0, 4); // Max 4 sektioner
 
-    // 2. Om ingen titelträff: Träff i innehåll
-    if (relevantChunks.length === 0) {
-      relevantChunks = chunks
-        .filter(chunk => {
-          const lowerContent = chunk.content.toLowerCase();
-          return questionWords.some(word => lowerContent.includes(word));
-        })
-        .sort((a, b) => {
-          const scoreA = questionWords.filter(w => (a.title + a.content).toLowerCase().includes(w)).length;
-          const scoreB = questionWords.filter(w => (b.title + b.content).toLowerCase().includes(w)).length;
-          return scoreB - scoreA;
-        });
-    }
-
-    // 3. Fallback: Specifika nyckelord
-    if (relevantChunks.length === 0) {
-      const fallbackKeywords = ['swish', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'montera', 'kontrollenhet', 'fortnox', 'faktura'];
-      relevantChunks = chunks.filter(chunk => {
-        const lowerFull = (chunk.title + chunk.content).toLowerCase();
-        return fallbackKeywords.some(kw => lowerFull.includes(kw) && lowerQuestion.includes(kw));
-      });
-    }
-
-    // Ta topp 3 (för att täcka relaterade sektioner om flera)
-    relevantChunks = relevantChunks.slice(0, 3);
-
-    const context = relevantChunks.map(c => c.full).join('\n\n');
+    // Om ingen träff alls – ingen context (prompten hanterar fallback)
+    const context = relevantChunks.length > 0
+      ? relevantChunks.map(c => c.full).join('\n\n')
+      : '';
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -117,29 +92,29 @@ export default async function handler(req, res) {
         role: 'system',
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER (FÖLJ DEM EXAKT):
-- SVARA ALLTID PÅ SVENSKA (användarens fråga är på svenska).
-- HITTA DEN MEST RELEVANTA SEKTIONEN I CONTEXT (baserat på titel).
-- BÖRJA SVARET MED "Enligt guiden i sektionen [Exakt titel]:"
-- CITERA SEDAN INNEHÅLLET ORDAGRANT (bevara radbrytningar och formatering, lägg inte till eller ändra steg).
-- Om flera relevanta sektioner: Lista dem en i taget med titel + exakt citat.
-- LÄGG INTE TILL EGNA STEG, FÖRKLARINGAR ELLER RÅD UTANFÖR GUIDEN.
-- Om ingen relevant sektion eller osäker: Svara ENDAST "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
+- SVARA ALLTID PÅ SVENSKA.
+- Om det finns relevanta sektioner i context: 
+  - Hitta den/de mest relevanta (baserat på titel och innehåll).
+  - Börja med "Enligt guiden i sektionen [Exakt titel]:" för varje.
+  - Citera sedan innehållet ordagrant (bevara radbrytningar, punkter och formatering).
+  - Om flera relevanta sektioner: Lista dem en efter en.
+- Lägg inte till egna steg, förklaringar eller råd utanför guiden.
+- Om ingen context eller osäker: Svara ENDAST "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
 Relevant guide-sektioner:
 ${context || 'Ingen relevant sektion hittades.'}`
       },
-      ...history.slice(-8) // Behåll lite historik
+      ...history.slice(-8)
     ];
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.0, // Noll för att minimera hallucination
+      temperature: 0.0,
       max_tokens: 800,
       messages
     });
 
     let answer = completion.choices[0].message.content.trim();
 
-    // Lägg till standardfot
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
 
     history.push({ role: 'assistant', content: answer });
