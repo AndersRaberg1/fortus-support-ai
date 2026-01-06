@@ -37,7 +37,7 @@ async function fetchCSV() {
       return cachedCSV;
     } catch (error) {
       console.error('Fetch error:', error);
-      if (cachedCSV) return cachedCSV; // Fallback till gammal cache
+      if (cachedCSV) return cachedCSV;
       throw error;
     }
   }
@@ -60,12 +60,12 @@ export default async function handler(req, res) {
     const chunks = csvText.split(/\n\s*\n/).map(chunk => chunk.trim()).filter(chunk => chunk.length > 30);
 
     const lowerQuestion = question.toLowerCase();
-    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 2); // Dela upp frågan i ord
+    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 2);
     let relevant = chunks.filter(chunk => {
       const lowerChunk = chunk.toLowerCase();
-      return questionWords.some(word => lowerChunk.includes(word)); // Matcha om NÅGOT ord från frågan finns i chunk
+      return questionWords.some(word => lowerChunk.includes(word));
     }).slice(0, 8).join('\n\n');
-    const context = relevant || csvText.substring(0, 15000); // Fallback till början om ingen match
+    const context = relevant || csvText.substring(0, 15000);
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -76,9 +76,10 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – extremt hjälpsam, professionell och noggrann.
 REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA.
-- Om relevant info finns i guiden: Ge strukturerat steg-för-steg-svar baserat på den, citera ordagrant där möjligt.
-- Ställ motfrågor ENDAST om frågan är otydlig eller saknar nyckeldetaljer (t.ex. modell, kanal, period).
-- Använd historik för att minnas och inte fråga samma sak igen.
+- Om relevant info finns i guiden: Börja med "Enligt guiden i sektionen [Titel]:" och citera innehållet ordagrant (bevara steg och formatering).
+- Ställ motfrågor ENDAST om frågan är otydlig eller saknar detaljer (t.ex. modell, kanal).
+- Använd historik för att minnas och inte upprepa frågor.
+- Översätt naturligt vid behov.
 - Om inget matchar: "Jag hittar inte detta i guiden. Kontakta <support@fortuspay.com> eller ring 010-222 15 20."
 Kunskap från FortusPay-guide:
 ${context}`
@@ -88,7 +89,7 @@ ${context}`
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.3,
+      temperature: 0.2,
       messages,
       max_tokens: 800
     });
