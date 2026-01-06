@@ -4,7 +4,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 let cachedChunks = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter
+const CACHE_TIME = 300000;
 
 const historyStore = new Map();
 
@@ -26,13 +26,11 @@ async function fetchAndChunkGuide() {
     for (let i = 0; i < lines.length; i += 2) {
       const title = lines[i] || 'Okänd sektion';
       const content = lines[i + 1] || '';
-      if (title || content) {
-        chunks.push({
-          title: title,
-          content: content,
-          full: `### ${title}\n${content}`
-        });
-      }
+      chunks.push({
+        title,
+        content,
+        full: `### ${title}\n${content}`
+      });
     }
 
     cachedChunks = chunks;
@@ -57,21 +55,29 @@ export default async function handler(req, res) {
 
     const lowerQuestion = question.toLowerCase();
 
-    // 1. Prioritera titel-match
+    // 1. Exakt titel-match (prioritet)
     let relevantChunks = chunks.filter(chunk => chunk.title.toLowerCase().includes(lowerQuestion));
 
-    // 2. Fallback: Innehåll eller keywords
+    // 2. Delvis titel eller innehåll
     if (relevantChunks.length === 0) {
       relevantChunks = chunks.filter(chunk => {
-        const lowerFull = (chunk.title + ' ' + chunk.content).toLowerCase();
-        if (lowerFull.includes(lowerQuestion)) return true;
+        const lowerTitle = chunk.title.toLowerCase();
+        const lowerContent = chunk.content.toLowerCase();
+        return lowerQuestion.split(' ').some(word => lowerTitle.includes(word) || lowerContent.includes(word));
+      });
+    }
+
+    // 3. Keyword-fallback
+    if (relevantChunks.length === 0) {
+      relevantChunks = chunks.filter(chunk => {
+        const lowerFull = (chunk.title + chunk.content).toLowerCase();
         const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
         return keywords.some(kw => lowerFull.includes(kw));
       });
     }
 
-    // Ta topp 3-5 chunks
-    relevantChunks = relevantChunks.slice(0, 5);
+    // Topp 4 chunks
+    relevantChunks = relevantChunks.slice(0, 4);
 
     const context = relevantChunks.map(c => c.full).join('\n\n');
 
@@ -84,26 +90,22 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- HITTA MEST RELEVANT SEKTIONS TITEL I CONTEXT NEDAN OCH CITERA ORDAGRANT INNEHÅLLET (INKL LÄNKAR/ID).
+- HITTA MEST RELEVANT SEKTIONS TITEL I CONTEXT OCH CITERA ORDAGRANT INNEHÅLLET (INKL LÄNKAR/ID).
 - BÖRJA MED "Enligt guiden i sektionen [Titel]:"
-- LÄGG INTE TILL, UPPFINN ELLER ÄNDRA NÅGOT – CITERA EXAKT.
+- CITERA EXAKT – LÄGG INTE TILL ELLER UPPFINN STEG.
 - Om ingen match: "Enligt guiden finns ingen exakt info – kontakta support@fortuspay.com eller ring 010-222 15 20."
-Relevant context från guiden:
-${context || 'Ingen relevant sektion hittades.'}`
+Relevant context:
+${context || 'Ingen relevant sektion.'}`
       },
       ...history
     ];
 
-    const completionPromise = groq.chat.completions.create({
+    const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.0,
       messages,
       max_tokens: 600
     });
-
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
-
-    const completion = await Promise.race([completionPromise, timeoutPromise]);
 
     let answer = completion.choices[0].message.content.trim();
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
