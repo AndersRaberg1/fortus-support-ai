@@ -2,14 +2,14 @@ import { Groq } from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-let cachedGuide = null;
+let cachedChunks = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000;
+const CACHE_TIME = 300000; // 5 minuter
 
 const historyStore = new Map();
 
-async function fetchGuide() {
-  if (Date.now() - lastFetch > CACHE_TIME || !cachedGuide) {
+async function fetchAndChunkGuide() {
+  if (Date.now() - lastFetch > CACHE_TIME || !cachedChunks) {
     const PUBHTML_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
     
     const res = await fetch(PUBHTML_URL);
@@ -22,17 +22,23 @@ async function fetchGuide() {
       .map(match => match.replace(/<[^>]+>/g, '').trim())
       .filter(text => text.length > 0);
 
-    let formattedText = '';
+    const chunks = [];
     for (let i = 0; i < lines.length; i += 2) {
       const title = lines[i] || 'Okänd sektion';
       const content = lines[i + 1] || '';
-      formattedText += `### ${title}\n${content}\n\n`;
+      if (title || content) {
+        chunks.push({
+          title: title,
+          content: content,
+          full: `### ${title}\n${content}`
+        });
+      }
     }
 
-    cachedGuide = formattedText.trim();
+    cachedChunks = chunks;
     lastFetch = Date.now();
   }
-  return cachedGuide;
+  return cachedChunks;
 }
 
 export default async function handler(req, res) {
@@ -47,25 +53,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const guideText = await fetchGuide();
+    const chunks = await fetchAndChunkGuide();
 
     const lowerQuestion = question.toLowerCase();
 
-    // Hitta mest relevant sektion (prioritera titel-match)
-    let relevantSection = guideText.split('\n\n').find(section => 
-      section.toLowerCase().includes(lowerQuestion)
-    );
+    // 1. Prioritera titel-match
+    let relevantChunks = chunks.filter(chunk => chunk.title.toLowerCase().includes(lowerQuestion));
 
-    // Fallback med keywords
-    if (!relevantSection) {
-      relevantSection = guideText.split('\n\n').find(section => {
-        const lowerSection = section.toLowerCase();
+    // 2. Fallback: Innehåll eller keywords
+    if (relevantChunks.length === 0) {
+      relevantChunks = chunks.filter(chunk => {
+        const lowerFull = (chunk.title + ' ' + chunk.content).toLowerCase();
+        if (lowerFull.includes(lowerQuestion)) return true;
         const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
-        return keywords.some(kw => lowerSection.includes(kw));
+        return keywords.some(kw => lowerFull.includes(kw));
       });
     }
 
-    const context = relevantSection || guideText;
+    // Ta topp 3-5 chunks
+    relevantChunks = relevantChunks.slice(0, 5);
+
+    const context = relevantChunks.map(c => c.full).join('\n\n');
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -76,22 +84,26 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- CITERA EXAKT FRÅN RELEVANT SEKTIONS INNEHÅLL NEDAN – LÄGG INTE TILL, UPPFINN INGA STEG ELLER DETALJER.
-- BÖRJA SVARET MED "Enligt guiden i sektionen [titel]:" + exakt citat.
-- Om ingen exakt match: Säg "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
-- Inkludera länkar om de finns i guiden.
-Relevant guide-sektion (citera exakt detta):
-${context}`
+- HITTA MEST RELEVANT SEKTIONS TITEL I CONTEXT NEDAN OCH CITERA ORDAGRANT INNEHÅLLET (INKL LÄNKAR/ID).
+- BÖRJA MED "Enligt guiden i sektionen [Titel]:"
+- LÄGG INTE TILL, UPPFINN ELLER ÄNDRA NÅGOT – CITERA EXAKT.
+- Om ingen match: "Enligt guiden finns ingen exakt info – kontakta support@fortuspay.com eller ring 010-222 15 20."
+Relevant context från guiden:
+${context || 'Ingen relevant sektion hittades.'}`
       },
       ...history
     ];
 
-    const completion = await groq.chat.completions.create({
+    const completionPromise = groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.0, // Ingen variation
+      temperature: 0.0,
       messages,
-      max_tokens: 500
+      max_tokens: 600
     });
+
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
+
+    const completion = await Promise.race([completionPromise, timeoutPromise]);
 
     let answer = completion.choices[0].message.content.trim();
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
