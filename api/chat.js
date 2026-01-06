@@ -27,7 +27,7 @@ async function fetchGuide() {
       const title = lines[i] || '';
       const content = lines[i + 1] || '';
       if (title || content) {
-        formattedText += `${title}\n${content}\n\n`;
+        formattedText += `### ${title}\n${content}\n\n`;
       }
     }
 
@@ -51,18 +51,16 @@ export default async function handler(req, res) {
   try {
     const guideText = await fetchGuide();
 
-    const chunks = guideText
-      .split(/\n\s*\n/)
-      .map(chunk => chunk.trim())
-      .filter(chunk => chunk.length > 30);
-
     const lowerQuestion = question.toLowerCase();
 
-    // Stark sökning
-    let relevantChunks = chunks.filter(chunk => lowerQuestion.split(' ').some(word => chunk.toLowerCase().includes(word)));
+    // Prioritera chunks med titel-match
+    let relevantChunks = guideText.split('\n\n').filter(chunk => {
+      return chunk.toLowerCase().includes(lowerQuestion);
+    });
 
-    if (relevantChunks.length < 1) {
-      relevantChunks = chunks.filter(chunk => {
+    // Fallback med keywords
+    if (relevantChunks.length === 0) {
+      relevantChunks = guideText.split('\n\n').filter(chunk => {
         const lowerChunk = chunk.toLowerCase();
         const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
         return keywords.some(kw => lowerChunk.includes(kw));
@@ -80,26 +78,22 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- ANVÄND ENDAST INFORMATION FRÅN GUIDEN NEDAN – CITERA EXAKT, INKLUDERA LÄNKAR OCH ID (t.ex. Swish ID 9873196894).
-- SVARA STEG-FÖR-STEG.
-- HALLUCINERA INTE – UPPFINN INGA STEG.
-- Om inget exakt matchar: Säg "Enligt guiden: [citera relevant] eller kontakta support@fortuspay.com | 010-222 15 20."
-Kunskap från guide (använd detta strikt):
+- ANVÄND ENDAST OCH EXAKT INFORMATION FRÅN GUIDEN NEDAN – CITERA DIREKT, INKLUDERA LÄNKAR OCH ID.
+- SVARA MED "Enligt guiden:" + citat från relevant sektion.
+- HALLUCINERA INTE – UPPFINN INGA STEG ELLER DETALJER.
+- Om inget matchar: Säg "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
+Guide (använd strikt detta):
 ${context}`
       },
       ...history
     ];
 
-    const completionPromise = groq.chat.completions.create({
+    const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.2, // Lägre för mindre hallucination
+      temperature: 0.1, // Minimal variation
       messages,
       max_tokens: 600
     });
-
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
-
-    const completion = await Promise.race([completionPromise, timeoutPromise]);
 
     let answer = completion.choices[0].message.content.trim();
     answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
