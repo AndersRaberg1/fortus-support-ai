@@ -8,6 +8,11 @@ const CACHE_TIME = 300000; // 5 minuter
 
 const historyStore = new Map();
 
+// Enkel stemming för svenska (och delvis engelska)
+function simpleStem(word) {
+  return word.replace(/(er|ar|or|en|et|a|e|s|t|ing|ed)$/i, '').trim();
+}
+
 async function fetchAndChunkGuide() {
   if (Date.now() - lastFetch > CACHE_TIME || !cachedChunks) {
     const PUBHTML_URL =
@@ -61,28 +66,25 @@ export default async function handler(req, res) {
     const chunks = await fetchAndChunkGuide();
 
     const lowerQuestion = question.toLowerCase().replace(/[?.!]/g, '');
+    let questionWords = lowerQuestion.split(' ').filter(word => word.length > 2);
+    const stemmedWords = questionWords.map(simpleStem).filter(w => w.length > 2);
+    const searchWords = [...new Set([...questionWords, ...stemmedWords])];
 
-    // Extrahera ord längre än 2 tecken
-    const questionWords = lowerQuestion
-      .split(' ')
-      .filter(word => word.length > 2);
-
-    // Hitta och ranka relevanta chunks
-    let relevantChunks = chunks
+    // Ranka chunks
+    const relevantChunks = chunks
       .map(chunk => {
         const lowerFull = (chunk.title + ' ' + chunk.content).toLowerCase();
-        const matches = questionWords.filter(word => lowerFull.includes(word));
+        const matches = searchWords.filter(word => lowerFull.includes(word));
         return { chunk, score: matches.length };
       })
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .map(item => item.chunk)
-      .slice(0, 4); // Max 4 sektioner
+      .slice(0, 6); // Lite fler för bättre kontext
 
-    // Om ingen träff alls – ingen context (prompten hanterar fallback)
     const context = relevantChunks.length > 0
       ? relevantChunks.map(c => c.full).join('\n\n')
-      : '';
+      : 'Ingen direkt matchande sektion.';
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -90,46 +92,30 @@ export default async function handler(req, res) {
     const messages = [
       {
         role: 'system',
-        content: `Du är FortusPay Support-AI – vänlig och professionell.
-ABSOLUT REGLER (FÖLJ DEM EXAKT):
-- SVARA ALLTID PÅ SVENSKA.
-- Om det finns relevanta sektioner i context: 
-  - Hitta den/de mest relevanta (baserat på titel och innehåll).
-  - Börja med "Enligt guiden i sektionen [Exakt titel]:" för varje.
-  - Citera sedan innehållet ordagrant (bevara radbrytningar, punkter och formatering).
-  - Om flera relevanta sektioner: Lista dem en efter en.
-- Lägg inte till egna steg, förklaringar eller råd utanför guiden.
-- Om ingen context eller osäker: Svara ENDAST "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
-Relevant guide-sektioner:
-${context || 'Ingen relevant sektion hittades.'}`
+        content: `Du är FortusPay Support-AI – extremt hjälpsam, vänlig och professionell.
+VIKTIGA REGLER (följ dem alltid):
+- SVARA ALLTID PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA (svenska, engelska, norska osv.). Detta är högsta prioritet.
+- Om frågan är en hälsning (hej/hi/hello osv.): Svara vänligt med en välkomstfras på samma språk och fråga hur du kan hjälpa.
+- Använd guiden som kunskapsbas. Förklara, sammanfatta och guida steg-för-steg baserat på innehållet.
+- Översätt guide-innehåll naturligt till användarens språk om det behövs.
+- Var maximalt hjälpsam: Om frågan är otydlig eller du behöver mer info → ställ en eller flera vänliga motfrågor för att kunna ge rätt svar.
+- Om ingen bra match i guiden: Säg "Jag hittar inte exakt detta i guiden just nu. Kan du berätta mer om vad du försöker göra? Alternativt kan du kontakta support@fortuspay.com eller ringa 010-222 15 20 för personlig hjälp."
+- Avsluta alltid med kontaktinfo om det känns relevant.
+
+Relevant guide-innehåll:
+${context}`
       },
-      ...history.slice(-8)
+      ...history.slice(-10)
     ];
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.0,
-      max_tokens: 800,
+      temperature: 0.4, // Naturligare och hjälpsammare ton
+      max_tokens: 1000,
       messages
     });
 
     let answer = completion.choices[0].message.content.trim();
 
-    answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
-
-    history.push({ role: 'assistant', content: answer });
-    if (history.length > 10) history = history.slice(-10);
-    historyStore.set(sessionId, history);
-
-    res.status(200).json({ answer });
-  } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ error: 'Tekniskt fel – försök igen om en stund' });
-  }
-}
-
-export const config = {
-  api: {
-    bodyParser: true,
-  },
-};
+    // Lägg till standardfot bara om det inte redan finns
+   
