@@ -34,9 +34,10 @@ async function fetchCSV() {
 
       cachedCSV = formattedText.trim();
       lastFetch = now;
+      return cachedCSV;
     } catch (error) {
       console.error('Fetch error:', error);
-      if (cachedCSV) return cachedCSV; // Fallback till gammal cache
+      if (cachedCSV) return cachedCSV; // Fallback
       throw error;
     }
   }
