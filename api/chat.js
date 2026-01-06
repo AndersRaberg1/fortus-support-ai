@@ -74,12 +74,11 @@ export default async function handler(req, res) {
       {
         role: 'system',
         content: `Du är FortusPay Support-AI – extremt hjälpsam, professionell och noggrann.
-REGLER:
+STRIKTA REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA.
-- Om relevant info finns i guiden: Börja med "Enligt guiden i sektionen [Titel]:" och citera innehållet ordagrant (bevara steg och formatering).
-- Ställ motfrågor ENDAST om frågan är otydlig eller saknar detaljer (t.ex. modell, kanal).
-- Använd historik för att minnas och inte upprepa frågor.
-- Översätt naturligt vid behov.
+- Om relevant info finns: Börja med "Enligt guiden i sektionen [Titel]:" och citera innehållet ORDAGRANT (bevara steg, formatering, länkar). Lägg inte till eller ändra något.
+- Ställ motfrågor ENDAST om otydligt (t.ex. modell, kanal) – annars ge direkt svar från guiden.
+- Använd historik för att minnas.
 - Om inget matchar: "Jag hittar inte detta i guiden. Kontakta <support@fortuspay.com> eller ring 010-222 15 20."
 Kunskap från FortusPay-guide:
 ${context}`
@@ -89,7 +88,7 @@ ${context}`
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.2,
+      temperature: 0.1, // Låg för att minimera hallucinationer
       messages,
       max_tokens: 800
     });
