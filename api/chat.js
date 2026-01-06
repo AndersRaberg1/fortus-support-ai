@@ -58,19 +58,19 @@ export default async function handler(req, res) {
 
     const lowerQuestion = question.toLowerCase();
 
-    // Bredare sökning med synonymer för stabila träffar
-    const relevantChunks = chunks
-      .filter(chunk => {
-        const lowerChunk = chunk.toLowerCase();
-        if (lowerQuestion.split(' ').some(word => lowerChunk.includes(word))) return true;
-        const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
-        return keywords.some(kw => lowerChunk.includes(kw.toLowerCase()));
-      })
-      .slice(0, 5)
-      .join('\n\n');
+    // Stark sökning för att alltid hitta relevant
+    let relevantChunks = chunks.filter(chunk => lowerQuestion.split(' ').some(word => chunk.toLowerCase().includes(word)));
 
-    // Alltid fallback till hela guiden om inget specifikt matchar
-    const context = relevantChunks || guideText.substring(0, 15000);
+    // Extra fallback med keywords om för få träffar
+    if (relevantChunks.length < 2) {
+      relevantChunks = chunks.filter(chunk => {
+        const lowerChunk = chunk.toLowerCase();
+        const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
+        return keywords.some(kw => lowerChunk.includes(kw));
+      });
+    }
+
+    const context = relevantChunks.join('\n\n') || guideText;
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -81,16 +81,16 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- Använd guiden för korrekt info – inkludera länkar och ID om de finns.
-- Svara steg-för-steg.
-- Om inget exakt matchar: Använd relevant info från guiden ändå eller säg "Kontakta support för detta."
-Kunskap från guide:
+- ANVÄND ENDAST INFORMATION FRÅN GUIDEN NEDAN – INKLUDERA LÄNKAR OCH SPECIFIKA ID (t.ex. Swish ID 9873196894).
+- SVARA STEG-FÖR-STEG OCH STRUKTURERAT.
+- HALLUCINERA INTE – LÄGG INTE TILL ELLER UPPFINN DETALJER.
+- Om inget exakt matchar: Säg "Enligt guiden finns ingen exakt info, kontakta support@fortuspay.com eller ring 010-222 15 20."
+Kunskap från FortusPay-guide:
 ${context}`
       },
       ...history
     ];
 
-    // Timeout + begränsningar för stabilitet
     const completionPromise = groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
