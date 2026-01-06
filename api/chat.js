@@ -37,7 +37,7 @@ async function fetchCSV() {
       return cachedCSV;
     } catch (error) {
       console.error('Fetch error:', error);
-      if (cachedCSV) return cachedCSV; // Fallback
+      if (cachedCSV) return cachedCSV; // Fallback till gammal cache
       throw error;
     }
   }
@@ -60,8 +60,12 @@ export default async function handler(req, res) {
     const chunks = csvText.split(/\n\s*\n/).map(chunk => chunk.trim()).filter(chunk => chunk.length > 30);
 
     const lowerQuestion = question.toLowerCase();
-    let relevant = chunks.filter(chunk => chunk.toLowerCase().includes(lowerQuestion)).slice(0, 8).join('\n\n');
-    const context = relevant || csvText.substring(0, 15000);
+    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 2); // Dela upp frågan i ord
+    let relevant = chunks.filter(chunk => {
+      const lowerChunk = chunk.toLowerCase();
+      return questionWords.some(word => lowerChunk.includes(word)); // Matcha om NÅGOT ord från frågan finns i chunk
+    }).slice(0, 8).join('\n\n');
+    const context = relevant || csvText.substring(0, 15000); // Fallback till början om ingen match
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -70,21 +74,13 @@ export default async function handler(req, res) {
       {
         role: 'system',
         content: `Du är FortusPay Support-AI – extremt hjälpsam, professionell och noggrann.
-STRIKTA REGLER – FÖLJ DEM ALLTID:
-- Om du saknar viktig information för att ge ett korrekt och komplett svar, STÄLL EN KLARGÖRANDE FRÅGA istället för att gissa eller ge ofullständigt svar.
-  Exempel på när du ska fråga:
-  - "Terminal" eller "betalterminal" → "Vilken modell av betalterminal använder du (t.ex. Verifone, Ingenico, Fortus Smart)?"
-  - "Swish" eller "anslut Swish" → "Är det för webshop, POS eller annan kanal?"
-  - "Dagsavslut" → "Vilken dag eller period gäller det?"
-  - "Kvittobild" → "Vill du lägga till bild i toppen eller foten av kvittot?"
-  - "Fortnox" → "Vilken del av integrationen behöver du hjälp med?"
-  - Allmänna fel → "Kan du beskriva exakt vad som händer och vilket felmeddelande du ser?"
-- Använd hela konversationens historik för att minnas tidigare svar och undvika att fråga samma sak igen.
-- SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA (engelska → engelska, svenska → svenska osv.).
-- Översätt svar naturligt från kunskapsbasen (som är på svenska).
-- Svara strukturerat, kort och steg-för-steg.
+REGLER:
+- SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA.
+- Om relevant info finns i guiden: Ge strukturerat steg-för-steg-svar baserat på den, citera ordagrant där möjligt.
+- Ställ motfrågor ENDAST om frågan är otydlig eller saknar nyckeldetaljer (t.ex. modell, kanal, period).
+- Använd historik för att minnas och inte fråga samma sak igen.
 - Om inget matchar: "Jag hittar inte detta i guiden. Kontakta <support@fortuspay.com> eller ring 010-222 15 20."
-Kunskap från FortusPay-guide (översätt vid behov):
+Kunskap från FortusPay-guide:
 ${context}`
       },
       ...history
