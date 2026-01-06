@@ -2,27 +2,29 @@ import { Groq } from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-let cachedCSV = null;
+let cachedGuide = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter (ändra till 60000 för 1 minut om du vill snabbare uppdatering)
+const CACHE_TIME = 300000; // 5 minuter
 
 const historyStore = new Map();
 
 async function fetchGuide() {
-  if (Date.now() - lastFetch > CACHE_TIME || !cachedCSV) {
-    const PUBHTML_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
-    
+  if (Date.now() - lastFetch > CACHE_TIME || !cachedGuide) {
+    const PUBHTML_URL =
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
+
     const res = await fetch(PUBHTML_URL);
     if (!res.ok) throw new Error('Kunde inte hämta guide från Google Sheets');
-    
+
     const html = await res.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const cells = Array.from(doc.querySelectorAll('td'));
-    const lines = cells
-      .map(cell => cell.textContent.trim())
+
+    // Regex för att extrahera text från alla <td>-celler och ta bort HTML-taggar
+    const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
+    const lines = cellMatches
+      .map(match => match.replace(/<[^>]+>/g, '').trim())
       .filter(text => text.length > 0);
 
+    // Bygg upp guiden i formatet: Titel\nInnehåll\n\n för varje sektion
     let formattedText = '';
     for (let i = 0; i < lines.length; i += 2) {
       const title = lines[i] || '';
@@ -32,10 +34,10 @@ async function fetchGuide() {
       }
     }
 
-    cachedCSV = formattedText.trim();
+    cachedGuide = formattedText.trim();
     lastFetch = Date.now();
   }
-  return cachedCSV;
+  return cachedGuide;
 }
 
 export default async function handler(req, res) {
@@ -50,21 +52,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    const csvText = await fetchGuide();
+    const guideText = await fetchGuide();
 
-    const chunks = csvText
+    // Dela upp i chunks (en chunk = en sektion)
+    const chunks = guideText
       .split(/\n\s*\n/)
       .map(chunk => chunk.trim())
       .filter(chunk => chunk.length > 30);
 
     const lowerQuestion = question.toLowerCase();
 
-    const relevantChunks = chunks
+    // Hitta relevanta chunks (max 5)
+    let relevantText = chunks
       .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
       .slice(0, 5)
       .join('\n\n');
 
-    const context = relevantChunks || csvText.substring(0, 10000);
+    // Fallback: om inget träff använder vi början av hela guiden
+    if (!relevantText) {
+      relevantText = guideText.substring(0, 10000);
+    }
+
+    const context = relevantText;
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -80,7 +89,7 @@ ABSOLUT REGLER:
 - Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
 - Svara strukturerat och steg-för-steg.
 - Ignorera irrelevant information i kontexten – fokusera strikt på frågan.
-- Om inget matchar i guiden: Översätt till användarens språk, t.ex. "I can't find this in the guide. Contact support@fortuspay.com or call 010-222 15 20."
+- Om inget matchar i guiden: Översätt till användarens språk, t.ex. "Jag hittar inte detta i guiden. Kontakta support@fortuspay.com eller ring 010-222 15 20."
 Kunskap från FortusPay-guide (översätt vid behov):
 ${context}`
       },
@@ -90,11 +99,12 @@ ${context}`
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
-      messages
+      messages,
+      max_tokens: 800
     });
 
     let answer = completion.choices[0].message.content.trim();
-    answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
+    answer += `\n\n👉 Personlig hjälp? <support@fortuspay.com> | 010-222 15 20`;
 
     history.push({ role: 'assistant', content: answer });
     if (history.length > 10) history = history.slice(-10);
