@@ -24,11 +24,9 @@ async function fetchGuide() {
 
     let formattedText = '';
     for (let i = 0; i < lines.length; i += 2) {
-      const title = lines[i] || '';
+      const title = lines[i] || 'Okänd sektion';
       const content = lines[i + 1] || '';
-      if (title || content) {
-        formattedText += `### ${title}\n${content}\n\n`;
-      }
+      formattedText += `### ${title}\n${content}\n\n`;
     }
 
     cachedGuide = formattedText.trim();
@@ -53,21 +51,21 @@ export default async function handler(req, res) {
 
     const lowerQuestion = question.toLowerCase();
 
-    // Prioritera chunks med titel-match
-    let relevantChunks = guideText.split('\n\n').filter(chunk => {
-      return chunk.toLowerCase().includes(lowerQuestion);
-    });
+    // Hitta mest relevant sektion (prioritera titel-match)
+    let relevantSection = guideText.split('\n\n').find(section => 
+      section.toLowerCase().includes(lowerQuestion)
+    );
 
     // Fallback med keywords
-    if (relevantChunks.length === 0) {
-      relevantChunks = guideText.split('\n\n').filter(chunk => {
-        const lowerChunk = chunk.toLowerCase();
+    if (!relevantSection) {
+      relevantSection = guideText.split('\n\n').find(section => {
+        const lowerSection = section.toLowerCase();
         const keywords = ['swish', 'anslut', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'ställ', 'montera', 'single stand', 'hårdvara', 'fortnox', 'kontrollenhet', 'pos', 'faktura', 'kassa'];
-        return keywords.some(kw => lowerChunk.includes(kw));
+        return keywords.some(kw => lowerSection.includes(kw));
       });
     }
 
-    const context = relevantChunks.join('\n\n') || guideText;
+    const context = relevantSection || guideText;
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -78,11 +76,11 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - SVARA ALLTID PÅ SAMMA SPRÅK SOM FRÅGAN.
-- ANVÄND ENDAST OCH EXAKT INFORMATION FRÅN GUIDEN NEDAN – CITERA DIREKT, INKLUDERA LÄNKAR OCH ID.
-- SVARA MED "Enligt guiden:" + citat från relevant sektion.
-- HALLUCINERA INTE – UPPFINN INGA STEG ELLER DETALJER.
-- Om inget matchar: Säg "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
-Guide (använd strikt detta):
+- CITERA EXAKT FRÅN RELEVANT SEKTIONS INNEHÅLL NEDAN – LÄGG INTE TILL, UPPFINN INGA STEG ELLER DETALJER.
+- BÖRJA SVARET MED "Enligt guiden i sektionen [titel]:" + exakt citat.
+- Om ingen exakt match: Säg "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
+- Inkludera länkar om de finns i guiden.
+Relevant guide-sektion (citera exakt detta):
 ${context}`
       },
       ...history
@@ -90,9 +88,9 @@ ${context}`
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.1, // Minimal variation
+      temperature: 0.0, // Ingen variation
       messages,
-      max_tokens: 600
+      max_tokens: 500
     });
 
     let answer = completion.choices[0].message.content.trim();
