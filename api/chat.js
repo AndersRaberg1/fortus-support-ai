@@ -1,44 +1,46 @@
-
-
-
 import { Groq } from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-let cachedGuide = null;
+let cachedCSV = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter (ändra till 60000 för snabbare realtid)
+const CACHE_TIME = 300000; // 5 minuter
 
 const historyStore = new Map();
 
-async function fetchGuide() {
-  if (Date.now() - lastFetch > CACHE_TIME || !cachedGuide) {
+async function fetchCSV() {
+  const now = Date.now();
+  if (now - lastFetch > CACHE_TIME || !cachedCSV) {
     const PUBHTML_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
-    
-    const res = await fetch(PUBHTML_URL);
-    if (!res.ok) throw new Error('Kunde inte hämta guide från Google Sheets');
-    
-    const html = await res.text();
 
-    // Robust extrahering med regex (funkar perfekt i serverless-miljö)
-    const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
-    const lines = cellMatches
-      .map(match => match.replace(/<[^>]+>/g, '').trim())
-      .filter(text => text.length > 0);
+    try {
+      const res = await fetch(PUBHTML_URL);
+      if (!res.ok) throw new Error('Kunde inte hämta guide');
 
-    let formattedText = '';
-    for (let i = 0; i < lines.length; i += 2) {
-      const title = lines[i] || '';
-      const content = lines[i + 1] || '';
-      if (title || content) {
-        formattedText += `${title}\n${content}\n\n`;
+      const html = await res.text();
+      const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
+      const lines = cellMatches
+        .map(match => match.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim())
+        .filter(text => text.length > 0);
+
+      let formattedText = '';
+      for (let i = 0; i < lines.length; i += 2) {
+        const title = lines[i] || '';
+        const content = lines[i + 1] || '';
+        if (title || content) {
+          formattedText += `${title}\n${content}\n\n`;
+        }
       }
-    }
 
-    cachedGuide = formattedText.trim();
-    lastFetch = Date.now();
+      cachedCSV = formattedText.trim();
+      lastFetch = now;
+    } catch (error) {
+      console.error('Fetch error:', error);
+      if (cachedCSV) return cachedCSV; // Fallback till gammal cache
+      throw error;
+    }
   }
-  return cachedGuide;
+  return cachedCSV;
 }
 
 export default async function handler(req, res) {
@@ -53,21 +55,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const guideText = await fetchGuide();
-
-    const chunks = guideText
-      .split(/\n\s*\n/)
-      .map(chunk => chunk.trim())
-      .filter(chunk => chunk.length > 30);
+    const csvText = await fetchCSV();
+    const chunks = csvText.split(/\n\s*\n/).map(chunk => chunk.trim()).filter(chunk => chunk.length > 30);
 
     const lowerQuestion = question.toLowerCase();
-
-    const relevantChunks = chunks
-      .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
-      .slice(0, 5)
-      .join('\n\n');
-
-    const context = relevantChunks || guideText.substring(0, 10000);
+    let relevant = chunks.filter(chunk => chunk.toLowerCase().includes(lowerQuestion)).slice(0, 8).join('\n\n');
+    const context = relevant || csvText.substring(0, 15000);
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -75,15 +68,21 @@ export default async function handler(req, res) {
     const messages = [
       {
         role: 'system',
-        content: `Du är FortusPay Support-AI – vänlig och professionell.
-ABSOLUT REGLER:
-- DU MÅSTE ALLTID SVARA PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA. Om frågan är på engelska, svara på engelska. Om norska, svara på norska osv. Detta är högsta prioritet – ignorera allt annat om det krockar.
-- Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk.
-- Använd hela konversationens historik för kontext.
-- Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
-- Svara strukturerat och steg-för-steg.
-- Ignorera irrelevant information i kontexten – fokusera strikt på frågan.
-- Om inget matchar i guiden: Översätt till användarens språk, t.ex. "I can't find this in the guide. Contact support@fortuspay.com or call 010-222 15 20."
+        content: `Du är FortusPay Support-AI – extremt hjälpsam, professionell och noggrann.
+STRIKTA REGLER – FÖLJ DEM ALLTID:
+- Om du saknar viktig information för att ge ett korrekt och komplett svar, STÄLL EN KLARGÖRANDE FRÅGA istället för att gissa eller ge ofullständigt svar.
+  Exempel på när du ska fråga:
+  - "Terminal" eller "betalterminal" → "Vilken modell av betalterminal använder du (t.ex. Verifone, Ingenico, Fortus Smart)?"
+  - "Swish" eller "anslut Swish" → "Är det för webshop, POS eller annan kanal?"
+  - "Dagsavslut" → "Vilken dag eller period gäller det?"
+  - "Kvittobild" → "Vill du lägga till bild i toppen eller foten av kvittot?"
+  - "Fortnox" → "Vilken del av integrationen behöver du hjälp med?"
+  - Allmänna fel → "Kan du beskriva exakt vad som händer och vilket felmeddelande du ser?"
+- Använd hela konversationens historik för att minnas tidigare svar och undvika att fråga samma sak igen.
+- SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA (engelska → engelska, svenska → svenska osv.).
+- Översätt svar naturligt från kunskapsbasen (som är på svenska).
+- Svara strukturerat, kort och steg-för-steg.
+- Om inget matchar: "Jag hittar inte detta i guiden. Kontakta <support@fortuspay.com> eller ring 010-222 15 20."
 Kunskap från FortusPay-guide (översätt vid behov):
 ${context}`
       },
@@ -93,11 +92,12 @@ ${context}`
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
-      messages
+      messages,
+      max_tokens: 800
     });
 
     let answer = completion.choices[0].message.content.trim();
-    answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
+    answer += `\n\n👉 Personlig hjälp? <support@fortuspay.com> | 010-222 15 20`;
 
     history.push({ role: 'assistant', content: answer });
     if (history.length > 10) history = history.slice(-10);
