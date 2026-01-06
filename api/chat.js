@@ -2,68 +2,51 @@ import { Groq } from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-let cachedGuide = null;
+let cachedChunks = null;
 let lastFetch = 0;
-const CACHE_TIME = 5 * 60 * 1000; // 5 minuter
+const CACHE_TIME = 300000; // 5 minuter
 
 const historyStore = new Map();
 
-/* =========================
-   HÄMTA & PARSA GOOGLE SHEET
-========================= */
-async function fetchGuide() {
-  if (cachedGuide && Date.now() - lastFetch < CACHE_TIME) {
-    return cachedGuide;
-  }
+async function fetchAndChunkGuide() {
+  if (Date.now() - lastFetch > CACHE_TIME || !cachedChunks) {
+    const PUBHTML_URL =
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
 
-  const PUBHTML_URL =
-    'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
+    const res = await fetch(PUBHTML_URL);
+    if (!res.ok) throw new Error('Kunde inte hämta guide från Google Sheets');
 
-  const res = await fetch(PUBHTML_URL);
-  if (!res.ok) {
-    throw new Error('Kunde inte hämta guide från Google Sheets');
-  }
+    const html = await res.text();
 
-  const html = await res.text();
+    // Extrahera celler och ersätt <br> med \n för att behålla formatering
+    const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
+    const cells = cellMatches
+      .map(match => match
+        .replace(/<br\s*\/?>/gi, '\n')  // Behåll radbrytningar
+        .replace(/<[^>]+>/g, '')
+        .trim()
+      )
+      .filter(text => text.length > 0);
 
-  // Extrahera celler
-  const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
-  const cells = cellMatches
-    .map(c => c.replace(/<[^>]+>/g, '').trim())
-    .filter(Boolean);
-
-  // Bygg sektioner: titel + innehåll
-  const sections = [];
-  for (let i = 0; i < cells.length; i += 2) {
-    sections.push({
-      title: cells[i] || '',
-      content: cells[i + 1] || ''
-    });
-  }
-
-  cachedGuide = sections;
-  lastFetch = Date.now();
-  return sections;
-}
-
-/* =========================
-   RELEVANS MATCHNING
-========================= */
-function scoreSection(section, questionWords) {
-  const text = `${section.title} ${section.content}`.toLowerCase();
-  let score = 0;
-
-  for (const word of questionWords) {
-    if (word.length > 3 && text.includes(word)) {
-      score++;
+    const chunks = [];
+    for (let i = 0; i < cells.length; i += 2) {
+      const title = cells[i] || 'Okänd sektion';
+      const content = cells[i + 1] || '';
+      if (title || content) {
+        chunks.push({
+          title: title.trim(),
+          content: content.trim(),
+          full: `### ${title.trim()}\n${content.trim()}`
+        });
+      }
     }
+
+    cachedChunks = chunks;
+    lastFetch = Date.now();
   }
-  return score;
+  return cachedChunks;
 }
 
-/* =========================
-   API HANDLER
-========================= */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -71,34 +54,60 @@ export default async function handler(req, res) {
 
   const { question, sessionId = 'default-session' } = req.body;
 
-  if (!question || !question.trim()) {
+  if (!question?.trim()) {
     return res.status(400).json({ error: 'Ingen fråga angiven' });
   }
 
   try {
-    const guideSections = await fetchGuide();
+    const chunks = await fetchAndChunkGuide();
 
-    const questionWords = question.toLowerCase().split(/\s+/);
+    const lowerQuestion = question.toLowerCase().replace(/[?.!]/g, '');
 
-    // Scora alla sektioner
-    const ranked = guideSections
-      .map(sec => ({
-        ...sec,
-        score: scoreSection(sec, questionWords)
-      }))
-      .filter(sec => sec.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+    // Extrahera nyckelord (filtrera bort stoppord)
+    const stopWords = ['hur', 'jag', 'gör', 'det', 'på', 'i', 'till', 'med', 'och', 'en', 'att', 'för', 'av'];
+    const questionWords = lowerQuestion
+      .split(' ')
+      .filter(word => word.length > 2 && !stopWords.includes(word));
 
-    const context =
-      ranked.length > 0
-        ? ranked
-            .map(
-              s =>
-                `### ${s.title}\n${s.content}`
-            )
-            .join('\n\n')
-        : '';
+    // 1. Prioritet: Träff i titel (minst 1 nyckelord)
+    let relevantChunks = chunks
+      .filter(chunk => {
+        const lowerTitle = chunk.title.toLowerCase();
+        return questionWords.some(word => lowerTitle.includes(word));
+      })
+      .sort((a, b) => {
+        const scoreA = questionWords.filter(w => a.title.toLowerCase().includes(w)).length;
+        const scoreB = questionWords.filter(w => b.title.toLowerCase().includes(w)).length;
+        return scoreB - scoreA;
+      });
+
+    // 2. Om ingen titelträff: Träff i innehåll
+    if (relevantChunks.length === 0) {
+      relevantChunks = chunks
+        .filter(chunk => {
+          const lowerContent = chunk.content.toLowerCase();
+          return questionWords.some(word => lowerContent.includes(word));
+        })
+        .sort((a, b) => {
+          const scoreA = questionWords.filter(w => (a.title + a.content).toLowerCase().includes(w)).length;
+          const scoreB = questionWords.filter(w => (b.title + b.content).toLowerCase().includes(w)).length;
+          return scoreB - scoreA;
+        });
+    }
+
+    // 3. Fallback: Specifika nyckelord
+    if (relevantChunks.length === 0) {
+      const fallbackKeywords = ['swish', 'dagsavslut', 'retur', 'kvitto', 'bild', 'stand', 'montera', 'kontrollenhet', 'fortnox', 'faktura'];
+      relevantChunks = chunks.filter(chunk => {
+        const lowerFull = (chunk.title + chunk.content).toLowerCase();
+        return fallbackKeywords.some(kw => lowerFull.includes(kw) && lowerQuestion.includes(kw));
+      });
+    }
+
+    // Ta topp 3 (för att täcka relaterade sektioner om flera)
+    relevantChunks = relevantChunks.slice(0, 3);
+
+    const context = relevantChunks.map(c => c.full).join('\n\n');
 
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
@@ -106,49 +115,46 @@ export default async function handler(req, res) {
     const messages = [
       {
         role: 'system',
-        content: `
-Du är FortusPay Support-AI.
-
-VIKTIGA REGLER (får aldrig brytas):
-- Svara ALLTID på samma språk som användaren.
-- Använd ENDAST information som finns i kunskapsbasen nedan.
-- Om svaret inte tydligt finns i kunskapsbasen: säg att du inte hittar det.
-- Hitta ALDRIG på information.
-- Svara tydligt, professionellt och strukturerat.
-
-Om information saknas, svara:
-"Jag hittar inte detta i FortusPays guide. Kontakta support@fortuspay.com eller ring 010-222 15 20."
-
-KUNSKAPSBAS:
-${context || 'INGEN MATCHANDE INFORMATION HITTADES.'}
-        `.trim()
+        content: `Du är FortusPay Support-AI – vänlig och professionell.
+ABSOLUT REGLER (FÖLJ DEM EXAKT):
+- SVARA ALLTID PÅ SVENSKA (användarens fråga är på svenska).
+- HITTA DEN MEST RELEVANTA SEKTIONEN I CONTEXT (baserat på titel).
+- BÖRJA SVARET MED "Enligt guiden i sektionen [Exakt titel]:"
+- CITERA SEDAN INNEHÅLLET ORDAGRANT (bevara radbrytningar och formatering, lägg inte till eller ändra steg).
+- Om flera relevanta sektioner: Lista dem en i taget med titel + exakt citat.
+- LÄGG INTE TILL EGNA STEG, FÖRKLARINGAR ELLER RÅD UTANFÖR GUIDEN.
+- Om ingen relevant sektion eller osäker: Svara ENDAST "Enligt guiden finns ingen exakt info om detta – kontakta support@fortuspay.com eller ring 010-222 15 20."
+Relevant guide-sektioner:
+${context || 'Ingen relevant sektion hittades.'}`
       },
-      ...history
+      ...history.slice(-8) // Behåll lite historik
     ];
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.1, // låg temp = mindre hallucination
-      max_tokens: 700,
+      temperature: 0.0, // Noll för att minimera hallucination
+      max_tokens: 800,
       messages
     });
 
     let answer = completion.choices[0].message.content.trim();
-    answer += `\n\n👉 Personlig hjälp: support@fortuspay.com | 010-222 15 20`;
+
+    // Lägg till standardfot
+    answer += `\n\n👉 Personlig hjälp? support@fortuspay.com | 010-222 15 20`;
 
     history.push({ role: 'assistant', content: answer });
     if (history.length > 10) history = history.slice(-10);
     historyStore.set(sessionId, history);
 
     res.status(200).json({ answer });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Tekniskt fel – försök igen senare' });
+  } catch (error) {
+    console.error('API Error:', error);
+    res.status(500).json({ error: 'Tekniskt fel – försök igen om en stund' });
   }
 }
 
 export const config = {
   api: {
-    bodyParser: true
-  }
+    bodyParser: true,
+  },
 };
