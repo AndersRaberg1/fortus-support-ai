@@ -42,8 +42,12 @@ export default async function handler(req, res) {
       .map(chunk => chunk.trim())
       .filter(chunk => chunk.length > 30);
     const lowerQuestion = question.toLowerCase();
+    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 3); // Ignorera korta ord som "hur", "jag"
     const relevantChunks = chunks
-      .filter(chunk => chunk.toLowerCase().includes(lowerQuestion))
+      .filter(chunk => {
+        const lowerChunk = chunk.toLowerCase();
+        return questionWords.some(word => lowerChunk.includes(word));
+      })
       .slice(0, 5)
       .join('\n\n');
     const context = relevantChunks || guideText.substring(0, 10000);
@@ -67,7 +71,7 @@ ${context}`
       ...history
     ];
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.2-90b-text-preview',
+      model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
       messages
     });
