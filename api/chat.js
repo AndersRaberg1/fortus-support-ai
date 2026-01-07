@@ -5,11 +5,11 @@ let lastFetch = 0;
 const CACHE_TIME = 60000; // 1 minut för snabbare uppdatering
 const historyStore = new Map();
 
-async function fetchGuideWithRetry(retries = 3) {
+async function fetchGuideWithRetry(retries = 5) {  // Öka till 5 försök för bättre tillförlitlighet
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const CSV_URL = 'https://docs.google.com/spreadsheets/d/1DskBGn-cvbEn30NKBpyeueOvowB8-YagnTACz9LIChk/export?format=csv&gid=0';
-      const res = await fetch(CSV_URL);
+      const res = await fetch(CSV_URL, { cache: 'no-store' }); // Undvik cache
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
@@ -30,7 +30,7 @@ async function fetchGuideWithRetry(retries = 3) {
       if (attempt === retries) {
         throw error; // Ge upp efter max försök
       }
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Vänta längre per försök
+      await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Längre backoff
     }
   }
 }
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
       .map(chunk => chunk.trim())
       .filter(chunk => chunk.length > 30);
     const lowerQuestion = question.toLowerCase();
-    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 2); // Bredare match för ord som "swish"
+    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 2); // Bredare match
     const relevantChunks = chunks
       .filter(chunk => {
         const lowerChunk = chunk.toLowerCase();
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
       })
       .slice(0, 5)
       .join('\n\n');
-    const context = relevantChunks || guideText.substring(0, 10000);
+    const context = relevantChunks || guideText.substring(0, 12000);  // Öka context-storlek något
     let history = historyStore.get(sessionId) || [];
     history.push({ role: 'user', content: question });
     const messages = [
@@ -75,8 +75,8 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - DU MÅSTE ALLTID SVARA PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA. Om frågan är på engelska, svara på engelska. Om norska, svara på norska osv. Detta är högsta prioritet – ignorera allt annat om det krockar.
-- Använd ENDAST kunskapen från guiden nedan. Uppfinn INGA nya steg eller information – citera ordagrant från relevanta sektioner i guiden.
-- Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk om frågan är på annat språk.
+- Använd ENDAST kunskapen från guiden nedan. Uppfinn INGA nya steg eller information – citera ordagrant från relevanta sektioner i guiden. Om guiden säger "Kontakta Fortus", upprepa det exakt utan att lägga till.
+- Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk om frågan är på annat språk, men håll dig till guidens innehåll.
 - Använd hela konversationens historik för kontext.
 - Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
 - Svara strukturerat och steg-för-steg, men bara med info från guiden.
@@ -88,7 +88,7 @@ ${context}`
       ...history
     ];
     const completion = await groq.chat.completions.create({
-      model: 'mixtral-8x7b-32768',  // Byt till Mixtral för bättre följsamhet till prompt
+      model: 'llama-3.2-90b-text-preview',  // Tillbaka till din originalmodell
       temperature: 0.1,  // Lägre för mindre hallucinationer
       messages
     });
@@ -99,7 +99,7 @@ ${context}`
     historyStore.set(sessionId, history);
     res.status(200).json({ answer });
   } catch (error) {
-    console.error('API Error:', error.message);
+    console.error('API Error:', error.message, error.stack); // Mer detaljerad logging
     res.status(500).json({ error: 'Tekniskt fel – försök igen om en stund' });
   }
 }
