@@ -1,10 +1,10 @@
 import { Groq } from 'groq-sdk';
-import fetch from 'node-fetch';  // Importera node-fetch för timeout-kontroll
+import fetch from 'node-fetch';  // För robust fetch med timeout
 
 const historyStore = new Map();
 let cachedGuide = null;
 let lastFetch = 0;
-const CACHE_TIME = 60000; // 1 minut
+const CACHE_TIME = 60000;
 
 async function fetchGuideWithRetry(retries = 5) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -12,7 +12,7 @@ async function fetchGuideWithRetry(retries = 5) {
       const CSV_URL = 'https://docs.google.com/spreadsheets/d/1DskBGn-cvbEn30NKBpyeueOvowB8-YagnTACz9LIChk/export?format=csv&gid=0';
       const res = await fetch(CSV_URL, { 
         method: 'GET',
-        timeout: 10000  // 10s timeout för att undvika Vercel-undici issue
+        timeout: 15000  // Ökad timeout till 15s
       });
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -56,7 +56,6 @@ export default async function handler(req, res) {
   }
   const lowerQuestion = question.toLowerCase();
   try {
-    // Hantera hälsningar innan Groq init (för att undvika key-fel)
     if (lowerQuestion === 'hej' || lowerQuestion === 'hi' || lowerQuestion === 'hello') {
       let greetingReply = '';
       if (lowerQuestion === 'hej') {
@@ -68,7 +67,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ answer: greetingReply });
     }
 
-    // Init Groq efter greeting-check
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
     const guideText = await fetchGuide();
