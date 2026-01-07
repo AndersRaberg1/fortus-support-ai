@@ -7,8 +7,7 @@
   },
   "dependencies": {
     "groq-sdk": "^0.3.2",
-    "csv-parser": "^3.0.0",
-    "node-fetch": "^2.7.0"
+    "csv-parser": "^3.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
