@@ -1,0 +1,9 @@
+# Ignorera env-filer med secrets
+.env
+
+# Ignorera installerade dependencies
+node_modules/
+
+# Andra vanliga ignores (valfritt, men bra)
+*.log
+.DS_Store  # För Mac-användare
