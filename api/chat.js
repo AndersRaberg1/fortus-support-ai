@@ -6,18 +6,16 @@ const CACHE_TIME = 300000; // 5 minuter
 const historyStore = new Map();
 async function fetchGuide() {
   if (Date.now() - lastFetch > CACHE_TIME || !cachedGuide) {
-    const PUBHTML_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pubhtml';
-    const res = await fetch(PUBHTML_URL);
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/1DskBGn-cvbEn30NKBpyeueOvowB8-YagnTACz9LIChk/export?format=csv&gid=0';
+    const res = await fetch(CSV_URL);
     if (!res.ok) throw new Error('Kunde inte hämta guide från Google Sheets');
-    const html = await res.text();
-    const cellMatches = html.match(/<td[^>]*>(.*?)<\/td>/g) || [];
-    const lines = cellMatches
-      .map(match => match.replace(/<[^>]+>/g, '').trim())
-      .filter(text => text.length > 0);
+    const csvText = await res.text();
+    // Parsa CSV till formaterad text (hantera rader med titel och innehåll)
+    const lines = csvText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     let formattedText = '';
     for (let i = 0; i < lines.length; i += 2) {
-      const title = lines[i] || '';
-      const content = lines[i + 1] || '';
+      const title = lines[i] ? lines[i].replace(/^"+|"+$/g, '').trim() : ''; // Ta bort citat
+      const content = lines[i + 1] ? lines[i + 1].replace(/^"+|"+$/g, '').trim() : '';
       if (title || content) {
         formattedText += `${title}\n${content}\n\n`;
       }
@@ -71,7 +69,7 @@ ${context}`
       ...history
     ];
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.2-90b-text-preview',
       temperature: 0.3,
       messages
     });
