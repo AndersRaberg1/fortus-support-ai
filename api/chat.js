@@ -2,29 +2,47 @@ import { Groq } from 'groq-sdk';
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 let cachedGuide = null;
 let lastFetch = 0;
-const CACHE_TIME = 300000; // 5 minuter
+const CACHE_TIME = 60000; // 1 minut för snabbare uppdatering
 const historyStore = new Map();
+
+async function fetchGuideWithRetry(retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const CSV_URL = 'https://docs.google.com/spreadsheets/d/1DskBGn-cvbEn30NKBpyeueOvowB8-YagnTACz9LIChk/export?format=csv&gid=0';
+      const res = await fetch(CSV_URL);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const csvText = await res.text();
+      // Parsa CSV till formaterad text (hantera rader med titel och innehåll)
+      const lines = csvText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      let formattedText = '';
+      for (let i = 0; i < lines.length; i += 2) {
+        const title = lines[i] ? lines[i].replace(/^"+|"+$/g, '').trim() : ''; // Ta bort citat
+        const content = lines[i + 1] ? lines[i + 1].replace(/^"+|"+$/g, '').trim() : '';
+        if (title || content) {
+          formattedText += `${title}\n${content}\n\n`;
+        }
+      }
+      return formattedText.trim();
+    } catch (error) {
+      console.error(`Fetch attempt ${attempt} failed: ${error.message}`);
+      if (attempt === retries) {
+        throw error; // Ge upp efter max försök
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Vänta längre per försök
+    }
+  }
+}
+
 async function fetchGuide() {
   if (Date.now() - lastFetch > CACHE_TIME || !cachedGuide) {
-    const CSV_URL = 'https://docs.google.com/spreadsheets/d/1DskBGn-cvbEn30NKBpyeueOvowB8-YagnTACz9LIChk/export?format=csv&gid=0';
-    const res = await fetch(CSV_URL);
-    if (!res.ok) throw new Error('Kunde inte hämta guide från Google Sheets');
-    const csvText = await res.text();
-    // Parsa CSV till formaterad text (hantera rader med titel och innehåll)
-    const lines = csvText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    let formattedText = '';
-    for (let i = 0; i < lines.length; i += 2) {
-      const title = lines[i] ? lines[i].replace(/^"+|"+$/g, '').trim() : ''; // Ta bort citat
-      const content = lines[i + 1] ? lines[i + 1].replace(/^"+|"+$/g, '').trim() : '';
-      if (title || content) {
-        formattedText += `${title}\n${content}\n\n`;
-      }
-    }
-    cachedGuide = formattedText.trim();
+    cachedGuide = await fetchGuideWithRetry();
     lastFetch = Date.now();
   }
   return cachedGuide;
 }
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -40,7 +58,7 @@ export default async function handler(req, res) {
       .map(chunk => chunk.trim())
       .filter(chunk => chunk.length > 30);
     const lowerQuestion = question.toLowerCase();
-    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 3); // Ignorera korta ord som "hur", "jag"
+    const questionWords = lowerQuestion.split(' ').filter(word => word.length > 2); // Bredare match för ord som "swish"
     const relevantChunks = chunks
       .filter(chunk => {
         const lowerChunk = chunk.toLowerCase();
@@ -57,20 +75,21 @@ export default async function handler(req, res) {
         content: `Du är FortusPay Support-AI – vänlig och professionell.
 ABSOLUT REGLER:
 - DU MÅSTE ALLTID SVARA PÅ EXAKT SAMMA SPRÅK SOM ANVÄNDARENS FRÅGA. Om frågan är på engelska, svara på engelska. Om norska, svara på norska osv. Detta är högsta prioritet – ignorera allt annat om det krockar.
-- Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk.
+- Använd ENDAST kunskapen från guiden nedan. Uppfinn INGA nya steg eller information – citera ordagrant från relevanta sektioner i guiden.
+- Kunskapsbasen är på svenska – översätt svaret naturligt och flytande till användarens språk om frågan är på annat språk.
 - Använd hela konversationens historik för kontext.
 - Om frågan är otydlig: Ställ en klargörande fråga på användarens språk.
-- Svara strukturerat och steg-för-steg.
+- Svara strukturerat och steg-för-steg, men bara med info från guiden.
 - Ignorera irrelevant information i kontexten – fokusera strikt på frågan.
-- Om inget matchar i guiden: Översätt till användarens språk, t.ex. "I can't find this in the guide. Contact <support@fortuspay.com> or call 010-222 15 20."
-Kunskap från FortusPay-guide (översätt vid behov):
+- Om inget matchar exakt i guiden: Översätt till användarens språk, t.ex. "Jag hittar inte detta i guiden. Kontakta <support@fortuspay.com> eller ring 010-222 15 20."
+Kunskap från FortusPay-guide (översätt vid behov, men citera ordagrant):
 ${context}`
       },
       ...history
     ];
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.2-90b-text-preview',
-      temperature: 0.3,
+      model: 'mixtral-8x7b-32768',  // Byt till Mixtral för bättre följsamhet till prompt
+      temperature: 0.1,  // Lägre för mindre hallucinationer
       messages
     });
     let answer = completion.choices[0].message.content.trim();
@@ -80,7 +99,7 @@ ${context}`
     historyStore.set(sessionId, history);
     res.status(200).json({ answer });
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('API Error:', error.message);
     res.status(500).json({ error: 'Tekniskt fel – försök igen om en stund' });
   }
 }
