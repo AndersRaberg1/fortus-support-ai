@@ -31,10 +31,16 @@ async function loadCSV() {
   });
 }
 
+// Förbättrad RAG med enkel similarity (utan extra libs) för bättre matchning
 function simpleRAG(query, data) {
-  const relevant = data.filter(row => 
-    Object.values(row).some(val => val.toLowerCase().includes(query.toLowerCase()))
-  );
+  const queryLower = query.toLowerCase();
+  const relevant = data.filter(row => {
+    const values = Object.values(row).join(' ').toLowerCase();
+    // Exakt match ELLER enkel overlap (t.ex. >50% ord matchar)
+    return values.includes(queryLower) || queryLower.split(' ').some(word => values.includes(word));
+  });
+  // Sortera efter relevans (längre match först)
+  relevant.sort((a, b) => Object.values(b).join(' ').length - Object.values(a).join(' ').length);
   return relevant.map(row => JSON.stringify(row)).join('\n');
 }
 
@@ -56,12 +62,12 @@ module.exports = async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: `Du är en hjälpsam support-AI för FortusPay. Svara exakt baserat på kunskapsbasen. Om inget matchar, föreslå mänsklig support. Strukturera svar: **Fråga:** [sammanfattning] **Svar:** [detaljer] **Källa:** [referens]. Kunskapsbas: ${context}`,
+          content: `Du är en hjälpsam support-AI för FortusPay. Använd ENDAST information från kunskapsbasen för att svara – hallucinera INTE egna svar eller allmän kunskap. Om inget matchar i kunskapsbasen, säg 'Jag hittade ingen specifik info i vår kunskapsbas. Kontakta support@fortuspay.com eller ring 010-222 15 20 för hjälp.' Strukturera svar: **Fråga:** [sammanfattning av användarens fråga] **Svar:** [exakta detaljer från kunskapsbasen, inkludera ID:n, steg etc.] **Källa:** [referens från kunskapsbasen, t.ex. 'Anslut Swish']. Kunskapsbas: ${context || 'Ingen matchande data.'}`,
         },
         { role: 'user', content: message },
       ],
-      model: 'llama-3.3-70b-versatile',  // Uppdaterad modell – ersätter den gamla
-      temperature: 0.5,
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.3, // Lägre för mer exakt
       max_tokens: 500,
     });
 
