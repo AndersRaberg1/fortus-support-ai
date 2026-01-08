@@ -8,9 +8,8 @@
   "dependencies": {
     "groq-sdk": "^0.3.2",
     "csv-parser": "^3.0.0",
-    "langchain": "^1.2.6",
     "@langchain/community": "^1.1.2",
-    "@langchain/text-splitters": "^0.1.0",
+    "@langchain/textsplitters": "^1.0.1",
     "@huggingface/inference": "^2.13.4",
     "@pinecone-database/pinecone": "^3.0.0"
   },
