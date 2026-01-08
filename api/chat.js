@@ -60,7 +60,7 @@ module.exports = async (req, res) => {
         },
         { role: 'user', content: message },
       ],
-      model: 'llama-3.1-70b-versatile',
+      model: 'llama-3.3-70b-versatile',  // Uppdaterad modell – ersätter den gamla
       temperature: 0.5,
       max_tokens: 500,
     });
