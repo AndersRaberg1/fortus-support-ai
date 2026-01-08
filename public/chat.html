@@ -42,11 +42,9 @@
     const form = document.getElementById('chat-input');
     const input = document.getElementById('message');
     const quickButtonsDiv = document.getElementById('quick-buttons');
-
     // Extrahera kontext från URL (?context=pos)
     const urlParams = new URLSearchParams(window.location.search);
     const context = urlParams.get('context') || 'general'; // Default till 'general'
-
     // Definiera vanliga frågor baserat på kontext
     const quickQuestions = {
       general: ['Hur ansluter jag Swish?', 'Vad är Z-rapport?', 'Hur hanterar jag fakturor?', 'Kontakta support'],
@@ -55,7 +53,6 @@
       pos: ['POS-systemfel?', 'Lägg till produkter i POS?', 'Daglig rapport i POS?', 'Betalningsalternativ'],
       ecom: ['E-com integration?', 'Webshop-faktura?', 'Swish för online-butik?', 'Återbetalning i e-com']
     };
-
     // Lägg till snabbknappar
     function addQuickButtons() {
       const questions = quickQuestions[context] || quickQuestions.general;
@@ -70,11 +67,9 @@
         quickButtonsDiv.appendChild(btn);
       });
     }
-
     // Lägg till välkomstmeddelande och snabbknappar vid laddning
     addMessage('Välkommen till FortusPay Support AI! Hur kan jag hjälpa dig idag?', false);
     addQuickButtons();
-
     function addMessage(text, isUser) {
       const msg = document.createElement('div');
       msg.classList.add('message', isUser ? 'user' : 'bot');
@@ -82,7 +77,6 @@
       messagesDiv.appendChild(msg);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
-
     // Typing-indicator
     function showTyping() {
       const typing = document.createElement('div');
@@ -92,16 +86,13 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
       return typing;
     }
-
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const message = input.value.trim();
       if (!message) return;
       addMessage(message, true);
       input.value = '';
-
       const typingElem = showTyping();
-
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
