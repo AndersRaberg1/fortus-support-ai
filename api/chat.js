@@ -31,16 +31,21 @@ async function loadCSV() {
   });
 }
 
-// Förbättrad RAG med enkel similarity (utan extra libs) för bättre matchning
+// Förbättrad RAG med fuzzy-matchning (lowercase, ordöverlapp > 0.5)
 function simpleRAG(query, data) {
-  const queryLower = query.toLowerCase();
+  const queryWords = query.toLowerCase().split(' ').filter(word => word.length > 2); // Ignorera korta ord
   const relevant = data.filter(row => {
-    const values = Object.values(row).join(' ').toLowerCase();
-    // Exakt match ELLER enkel overlap (t.ex. >50% ord matchar)
-    return values.includes(queryLower) || queryLower.split(' ').some(word => values.includes(word));
+    const rowText = Object.values(row).join(' ').toLowerCase();
+    const rowWords = rowText.split(' ').filter(word => word.length > 2);
+    const overlap = queryWords.filter(word => rowWords.includes(word)).length;
+    return overlap / queryWords.length > 0.5; // Minst 50% ordöverlapp
   });
-  // Sortera efter relevans (längre match först)
-  relevant.sort((a, b) => Object.values(b).join(' ').length - Object.values(a).join(' ').length);
+  // Sortera efter relevans (mer overlap först)
+  relevant.sort((a, b) => {
+    const overlapA = queryWords.filter(word => Object.values(a).join(' ').toLowerCase().includes(word)).length;
+    const overlapB = queryWords.filter(word => Object.values(b).join(' ').toLowerCase().includes(word)).length;
+    return overlapB - overlapA;
+  });
   return relevant.map(row => JSON.stringify(row)).join('\n');
 }
 
@@ -62,12 +67,12 @@ module.exports = async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: `Du är en hjälpsam support-AI för FortusPay. Använd ENDAST information från kunskapsbasen för att svara – hallucinera INTE egna svar eller allmän kunskap. Om inget matchar i kunskapsbasen, säg 'Jag hittade ingen specifik info i vår kunskapsbas. Kontakta support@fortuspay.com eller ring 010-222 15 20 för hjälp.' Strukturera svar: **Fråga:** [sammanfattning av användarens fråga] **Svar:** [exakta detaljer från kunskapsbasen, inkludera ID:n, steg etc.] **Källa:** [referens från kunskapsbasen, t.ex. 'Anslut Swish']. Kunskapsbas: ${context || 'Ingen matchande data.'}`,
+          content: `Du är en hjälpsam support-AI för FortusPay. Använd ENDAST information från kunskapsbasen för att svara – hallucinera INTE egna svar eller allmän kunskap. Om inget matchar i kunskapsbasen, säg 'Jag hittade ingen specifik info i vår kunskapsbas. Kontakta support@fortuspay.com eller ring 010-222 15 20 för hjälp.' Strukturera svar: **Fråga:** [sammanfattning av användarens fråga] **Svar:** [exakta detaljer från kunskapsbasen, inkludera ID:n, steg, länkar etc.] **Källa:** [referens från kunskapsbasen, t.ex. 'Anslut Swish']. Kunskapsbas: ${context || 'Ingen matchande data.'}`,
         },
         { role: 'user', content: message },
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.3, // Lägre för mer exakt
+      temperature: 0.3,
       max_tokens: 500,
     });
 
