@@ -31,16 +31,32 @@ async function loadCSV() {
   });
 }
 
-// Förbättrad RAG med fuzzy-matchning (lowercase, ordöverlapp > 0.5)
+// Synonym-mapping för vanliga termer (lägg till fler vid behov)
+const synonyms = {
+  'z-rapport': ['dagsavslut', 'z-rapport'],
+  'fakturor': ['faktura', 'anslut faktura'],
+  'swish': ['swish', 'anslut swish'],
+  'stand': ['montera stand', 'stand'],
+  // Lägg till fler, t.ex. 'mpos': ['mpos', 'mobil pos']
+};
+
+// Förbättrad RAG med synonymer, lowercase, ordöverlapp >=0.4
 function simpleRAG(query, data) {
-  const queryWords = query.toLowerCase().split(' ').filter(word => word.length > 2); // Ignorera korta ord
+  let queryWords = query.toLowerCase().split(' ').filter(word => word.length > 2);
+  // Lägg till synonymer till queryWords
+  queryWords.forEach(word => {
+    if (synonyms[word]) {
+      queryWords = [...new Set([...queryWords, ...synonyms[word].map(w => w.toLowerCase())])];
+    }
+  });
+
   const relevant = data.filter(row => {
     const rowText = Object.values(row).join(' ').toLowerCase();
     const rowWords = rowText.split(' ').filter(word => word.length > 2);
     const overlap = queryWords.filter(word => rowWords.includes(word)).length;
-    return overlap / queryWords.length > 0.5; // Minst 50% ordöverlapp
+    return overlap / queryWords.length >= 0.4; // Sänkt tröskel för bättre känslighet
   });
-  // Sortera efter relevans (mer overlap först)
+  // Sortera efter relevans
   relevant.sort((a, b) => {
     const overlapA = queryWords.filter(word => Object.values(a).join(' ').toLowerCase().includes(word)).length;
     const overlapB = queryWords.filter(word => Object.values(b).join(' ').toLowerCase().includes(word)).length;
