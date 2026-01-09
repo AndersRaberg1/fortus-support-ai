@@ -38,7 +38,7 @@
     </form>
   </div>
   <script>
-    console.log('Steg 1: Frontend-script laddat – setup startar nu'); // Bekräfta load
+    console.log('Steg 1: Frontend-script laddat – setup startar nu'); // Från tidigare
 
     const messagesDiv = document.getElementById('chat-messages');
     const form = document.getElementById('chat-input');
@@ -90,14 +90,14 @@
     }
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      console.log('Steg 2: Submit triggad – startar fetch med meddelande:', input.value); // Ny debug – visar om submit körs
+      console.log('Steg 2: Submit triggad – startar fetch med meddelande:', input.value); // Från tidigare
       const message = input.value.trim();
       if (!message) return;
       addMessage(message, true);
       input.value = '';
       const typingElem = showTyping();
       try {
-        console.log('Starting fetch to /api/chat with message:', message); // Debug: Se om det körs
+        console.log('Steg 3: Fetch startad – väntar på respons'); // Ny debug – visar om fetch anropas
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -108,7 +108,7 @@
         typingElem.remove();
         addMessage(reply, false);
       } catch (error) {
-        console.error('Fetch error:', error); // Debug: Fel-detaljer
+        console.error('Steg 3: Fetch error:', error); // Debug: Fel-detaljer
         typingElem.remove();
         addMessage('Fel: Kunde inte hämta svar.', false);
       }
