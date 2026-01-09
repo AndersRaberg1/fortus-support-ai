@@ -27,7 +27,8 @@
 <body>
   <div id="chat-container">
     <div id="chat-header">
-      <img src="https://placehold.co/30x30?text=FP" alt="FortusPay Logo">
+      <img src="https://via.placeholder.com/30?text=FP" alt="FortusPay Logo"> <!-- Byt till er riktiga logga-URL -->
+      FortusPay Support AI
     </div>
     <div id="chat-messages"></div>
     <div id="quick-buttons"></div>
@@ -37,6 +38,7 @@
     </form>
   </div>
   <script>
+    console.log('Steg 1 debug: Chat-script laddat – setup startar'); // Ny debug-log
     const messagesDiv = document.getElementById('chat-messages');
     const form = document.getElementById('chat-input');
     const input = document.getElementById('message');
