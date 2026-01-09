@@ -80,4 +80,22 @@ module.exports = async (req, res) => {
   try {
     const data = await loadCSVAndUpdateVectorStore();
     const context = await advancedRAG(message, data);
-    const completion = await gro
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: `Du är en hjälpsam support-AI för FortusPay. Använd ENDAST information från kunskapsbasen för att svara – hallucinera INTE egna svar eller allmän kunskap. Om inget matchar i kunskapsbasen, säg 'Jag hittade ingen specifik info i vår kunskapsbas. Kontakta support@fortuspay.com eller ring 010-222 15 20 för hjälp.' Strukturera svar: **Fråga:** [sammanfattning av användarens fråga] **Svar:** [exakta detaljer från kunskapsbasen, inkludera ID:n, steg, länkar etc.] **Källa:** [referens från kunskapsbasen, t.ex. 'Anslut Swish']. Kunskapsbas: ${context || 'Ingen matchande data.'}`,
+        },
+        { role: 'user', content: message },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.3,
+      max_tokens: 500,
+    });
+    const reply = completion.choices[0]?.message?.content || 'Inget svar genererat.';
+    res.status(200).json({ reply });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Serverfel' });
+  }
+};
