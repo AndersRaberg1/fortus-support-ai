@@ -38,7 +38,8 @@
     </form>
   </div>
   <script>
-    console.log('Steg 1 debug: Chat-script laddat – setup startar'); // Ny debug-log
+    console.log('Steg 1: Frontend-script laddat – setup startar nu'); // Från tidigare steg
+
     const messagesDiv = document.getElementById('chat-messages');
     const form = document.getElementById('chat-input');
     const input = document.getElementById('message');
@@ -89,6 +90,7 @@
     }
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      console.log('Steg 2: Submit triggad – startar fetch'); // Ny debug-log: Visas om submit körs
       const message = input.value.trim();
       if (!message) return;
       addMessage(message, true);
