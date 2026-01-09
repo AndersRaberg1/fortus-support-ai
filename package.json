@@ -19,6 +19,7 @@
   "overrides": {
     "@getzep/zep-cloud": {
       "@langchain/core": "^1.1.11"
-    }
+    },
+    "better-sqlite3": "^11.0.0"
   }
 }
