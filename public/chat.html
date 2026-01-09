@@ -94,15 +94,18 @@
       input.value = '';
       const typingElem = showTyping();
       try {
+        console.log('Starting fetch to /api/chat with message:', message); // Debug: Se om det körs
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message }),
         });
+        console.log('Fetch response status:', res.status); // Debug: Respons-status
         const { reply } = await res.json();
         typingElem.remove();
         addMessage(reply, false);
       } catch (error) {
+        console.error('Fetch error:', error); // Debug: Fel-detaljer
         typingElem.remove();
         addMessage('Fel: Kunde inte hämta svar.', false);
       }
