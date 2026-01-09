@@ -11,7 +11,7 @@
     "@langchain/community": "^1.1.2",
     "@langchain/textsplitters": "^1.0.1",
     "@huggingface/inference": "^4.13.3",
-    "@pinecone-database/pinecone": "^3.0.0",
+    "@pinecone-database/pinecone": "^5.0.2",
     "@langchain/pinecone": "^1.0.1"
   },
   "engines": {
