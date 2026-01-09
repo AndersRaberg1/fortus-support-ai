@@ -2,7 +2,7 @@ const { Groq } = require('groq-sdk');
 const csv = require('csv-parser');
 const { Pinecone } = require('@pinecone-database/pinecone');
 const { HuggingFaceInferenceEmbeddings } = require('@langchain/community/embeddings/hf');
-const { PineconeStore } = require('@langchain/community/vectorstores/pinecone');
+const { PineconeStore } = require('@langchain/pinecone');
 const { RecursiveCharacterTextSplitter } = require('@langchain/textsplitters');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTzsKAX2AsSsvpz0QuNA_8Tx4218SShTDwDCaZXRtmbEG5SumcFM59sJtCzLsm0hHfMXOgnT4kCJMj1/pub?output=csv';
