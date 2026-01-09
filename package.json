@@ -15,5 +15,10 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "overrides": {
+    "@getzep/zep-cloud": {
+      "@langchain/core": "^1.1.11"
+    }
   }
 }
