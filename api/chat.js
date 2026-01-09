@@ -70,6 +70,7 @@ function simpleRAG(query, data) {
   return relevant.map(row => JSON.stringify(row)).join('\n');
 }
 module.exports = async (req, res) => {
+  console.log('API invoked – method:', req.method, 'body:', req.body); // Log vid start
   if (req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed');
   }
@@ -95,7 +96,7 @@ module.exports = async (req, res) => {
     const reply = completion.choices[0]?.message?.content || 'Inget svar genererat.';
     res.status(200).json({ reply });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Serverfel' });
+    console.error('API error:', error.message, error.stack); // Log fel-detaljer
+    res.status(500).json({ error: 'Serverfel – se logs' });
   }
 };
