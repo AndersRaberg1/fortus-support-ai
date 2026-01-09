@@ -1,26 +1,21 @@
 {
-  "name": "fortus-support-ai",
+  "name": "fortus-support",
   "version": "1.0.0",
-  "main": "api/chat.js",
-  "scripts": {
-    "start": "node api/chat.js"
-  },
   "dependencies": {
+    "next": "^14.2.13",  // Lägg till detta (använd latest stabila version)
+    // Dina andra deps, t.ex.:
     "groq-sdk": "^0.3.2",
-    "csv-parser": "^3.0.0",
-    "@langchain/community": "^1.1.2",
-    "@langchain/textsplitters": "^1.0.1",
-    "@huggingface/inference": "^4.13.3",
-    "@pinecone-database/pinecone": "^5.0.2",
-    "@langchain/pinecone": "^1.0.1"
+    "@pinecone-database/pinecone": "^latest",
+    "@langchain/pinecone": "^latest",
+    "@langchain/community": "^latest",
+    "langchain": "^latest"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
   "engines": {
-    "node": ">=18.0.0"
-  },
-  "overrides": {
-    "@getzep/zep-cloud": {
-      "@langchain/core": "^1.1.11"
-    },
-    "better-sqlite3": "^11.0.0"
+    "node": ">=18"
   }
 }
